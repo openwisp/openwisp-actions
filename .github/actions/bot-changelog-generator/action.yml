@@ -1,0 +1,52 @@
+name: "OpenWISP Changelog Generator"
+description: "Analyzes a PR and generates a squash-merge commit message suggestion"
+author: "OpenWISP"
+
+inputs:
+  github-token:
+    description: "GitHub token for API access"
+    required: true
+  gemini-api-key:
+    description: "Google Gemini API key"
+    required: true
+  pr-number:
+    description: "Pull request number to analyze"
+    required: true
+  repo-name:
+    description: "Repository name in format owner/repo"
+    required: true
+  gemini-model:
+    description: "Gemini model to use (empty falls back to gemini-3.5-flash-lite)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      with:
+        python-version: "3.13"
+
+    - name: Install dependencies
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: pip install -r "$ACTION_PATH/../../../requirements.txt"
+
+    - name: Generate changelog entry
+      id: generate
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REPO_NAME: ${{ inputs.repo-name }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
+        GEMINI_MODEL: ${{ inputs.gemini-model }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python "$ACTION_PATH/generate_changelog.py"
+
+branding:
+  icon: "file-text"
+  color: "orange"

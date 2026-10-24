@@ -1,1 +1,0 @@
-# openwisp-actions

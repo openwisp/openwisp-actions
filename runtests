@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+
+python -m pytest \
+  .github/actions/bot-autoassign/tests \
+  .github/actions/bot-changelog-generator/test_generate_changelog.py \
+  .github/actions/bot-ci-failure/test_analyze_failure.py \
+  -q

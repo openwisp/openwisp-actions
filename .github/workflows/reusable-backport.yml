@@ -86,6 +86,8 @@ jobs:
           private-key: ${{ secrets.private_key }}
           permission-contents: write
           permission-pull-requests: write
+          # GitHub requires Workflows: write when a push changes .github/workflows/.
+          permission-workflows: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

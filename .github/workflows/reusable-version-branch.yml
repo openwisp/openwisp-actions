@@ -72,6 +72,7 @@ jobs:
     concurrency:
       group: version-branch-replication-${{ github.repository }}
       cancel-in-progress: false
+      queue: max
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:

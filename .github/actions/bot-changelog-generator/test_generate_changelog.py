@@ -951,6 +951,21 @@ class TestGenerateChangelogEntry(unittest.TestCase):
 class TestChangelogTriggerWorkflow(unittest.TestCase):
     """Tests for the workflow that decides whether the bot should run."""
 
+    def test_runner_validates_approval_and_uses_api_diff(self):
+        workflow = (
+            Path(__file__).resolve().parents[2]
+            / "workflows"
+            / "bot-changelog-runner.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Verify triggering pull request", workflow)
+        self.assertIn("Verify current eligible approval", workflow)
+        self.assertIn(".commit_id == $head_sha", workflow)
+        self.assertIn("compare/$APPROVED_BASE_SHA...$APPROVED_HEAD_SHA", workflow)
+        self.assertNotIn("refs/pull/", workflow)
+        self.assertIn(
+            ".github/actions/bot-changelog-generator/generate_changelog.py", workflow
+        )
+
     def test_noteworthy_regex_matches_backward_incompatible_changes(self):
         workflow_path = (
             Path(__file__).resolve().parents[2]

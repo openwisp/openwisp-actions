@@ -7,3 +7,5 @@ openwisp-qa-check \
       --skip-checkcommit
 
 zizmor --offline --persona=auditor .
+
+shellcheck .github/actions/*/*.sh

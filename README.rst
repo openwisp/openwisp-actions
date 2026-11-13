@@ -817,6 +817,57 @@ activates ``workflow_run`` listeners that exist on the default branch:
 adding the runner only to a feature branch will cause it to silently do
 nothing.
 
+On-Demand AI Review
+~~~~~~~~~~~~~~~~~~~
+
+This reusable workflow lets OpenWISP organization members request an AI
+review by commenting on a pull request:
+
+- ``/review``: checks whether the pull request is worth the effort (root
+  cause or workaround, approach, ``AGENTS.md`` rules, performance and race
+  conditions).
+- ``/security-review``: looks for actionable security issues.
+- ``/final-review``: checks whether earlier findings were addressed and
+  looks for new critical issues.
+
+The OpenWISP bot publishes the review with a verdict, a summary and inline
+comments labeled ``P1`` to ``P3``, and dismisses its earlier change
+requests of the same stage. Pull request content is only read as data: the
+model has no access to the workflow's GitHub tokens and cannot run
+commands, edit files or fetch URLs.
+
+**Model configuration**
+
+``/review`` and ``/final-review`` use ``github-copilot/gpt-6.1-terra``,
+``/security-review`` uses ``github-copilot/gpt-6-astra``. These need the
+``OPENCODE_PROVIDER`` variable set to ``github-copilot`` and the Copilot
+token passed as the ``OPENCODE_AUTH`` secret. To use another model for a
+single review, add ``copilot/<model>`` or ``opencode/<model>`` after the
+command, e.g. ``/review opencode/deepseek-v4.1-flash-free``.
+
+**Usage Example**
+
+.. code-block:: yaml
+
+    name: AI Review
+
+    on:
+      issue_comment:
+        types: [created]
+
+    permissions: {}
+
+    jobs:
+      ai-review:
+        permissions:
+          contents: read
+          pull-requests: read
+        uses: openwisp/openwisp-actions/.github/workflows/reusable-ai-review.yml@master
+        secrets:
+          APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
+          OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH }}
+
 Development
 ===========
 

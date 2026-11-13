@@ -5,4 +5,6 @@ python -m pytest \
   .github/actions/bot-autoassign/tests \
   .github/actions/bot-changelog-generator/test_generate_changelog.py \
   .github/actions/bot-ci-failure/test_analyze_failure.py \
+  .github/actions/ai-review/test_extract_findings.py \
+  .github/actions/ai-review/test_parse_command.py \
   -q

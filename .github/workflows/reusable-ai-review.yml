@@ -30,32 +30,19 @@ jobs:
       head_sha: ${{ steps.pr.outputs.head_sha }}
       base_sha: ${{ steps.pr.outputs.base_sha }}
     steps:
+      - name: Checkout reusable workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: trusted_scripts
+          persist-credentials: false
+
       - name: Parse command
         id: command
         env:
           BODY: ${{ github.event.comment.body }}
-          REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL || 'opencode/deepseek-v4.1-flash-free' }}
-          SECURITY_MODEL: ${{ vars.AI_SECURITY_REVIEW_MODEL }}
-          FINAL_MODEL: ${{ vars.AI_FINAL_REVIEW_MODEL }}
-        run: |
-          COMMAND=$(printf '%s' "$BODY" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-          PATTERN='^(/[a-z-]+)([[:space:]]+(copilot|opencode)/([a-z0-9.-]+))?$'
-          if ! [[ "$COMMAND" =~ $PATTERN ]]; then
-            echo "Not a review command"
-            exit 0
-          fi
-          case "${BASH_REMATCH[1]}" in
-            /review) STAGE=review MODEL=$REVIEW_MODEL ;;
-            /security-review) STAGE=security-review MODEL=${SECURITY_MODEL:-$REVIEW_MODEL} ;;
-            /final-review) STAGE=final-review MODEL=${FINAL_MODEL:-$REVIEW_MODEL} ;;
-            *) echo "Not a review command"; exit 0 ;;
-          esac
-          case "${BASH_REMATCH[3]}" in
-            copilot) MODEL="github-copilot/${BASH_REMATCH[4]}" ;;
-            opencode) MODEL="opencode/${BASH_REMATCH[4]}" ;;
-          esac
-          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
-          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+        run: trusted_scripts/.github/actions/ai-review/parse-command.sh
 
       - name: Generate read-only app token
         if: steps.command.outputs.stage != ''
@@ -82,19 +69,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          PR=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")
-          HEAD_SHA=$(jq -er '.head.sha' <<< "$PR")
-          BASE_SHA=$(jq -er '.base.sha' <<< "$PR")
-          for SHA in "$HEAD_SHA" "$BASE_SHA"; do
-            if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "::error::Invalid commit reference"
-              exit 1
-            fi
-          done
-          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+        run: trusted_scripts/.github/actions/ai-review/read-pull-request.sh
 
   acknowledge:
     name: Add eyes reaction
@@ -120,11 +95,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
           COMMENT_ID: ${{ github.event.comment.id }}
-        run: |
-          set -euo pipefail
-          REACTION_ID=$(gh api -X POST "repos/$REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
-            -f content=eyes --jq '.id')
-          echo "reaction_id=$REACTION_ID" >> "$GITHUB_OUTPUT"
+        run: echo "reaction_id=$(gh api -X POST "repos/$REPOSITORY/issues/comments/$COMMENT_ID/reactions" -f content=eyes --jq '.id')" >> "$GITHUB_OUTPUT"
 
   review:
     name: Run ${{ needs.gate.outputs.stage }}
@@ -159,18 +130,7 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
           BASE_SHA: ${{ needs.gate.outputs.base_sha }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
-          git worktree add --detach "$RUNNER_TEMP/pr" "$HEAD_SHA"
-          git diff "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
-          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/pr.files"
-          rm -rf "$RUNNER_TEMP/pr/.opencode" "$RUNNER_TEMP/pr/opencode.json" \
-            "$RUNNER_TEMP/pr/opencode.jsonc" "$RUNNER_TEMP/pr/AGENTS.md" \
-            "$RUNNER_TEMP/pr/CLAUDE.md"
-          if [ -f AGENTS.md ]; then
-            cp AGENTS.md "$RUNNER_TEMP/pr/AGENTS.md"
-          fi
+        run: trusted_scripts/.github/actions/ai-review/fetch-pull-request.sh
 
       - name: Install OpenCode
         run: npm install -g opencode-ai@1.18.35 # zizmor: ignore[adhoc-packages] The exact OpenCode release is pinned.
@@ -179,13 +139,7 @@ jobs:
         if: vars.OPENCODE_PROVIDER == 'github-copilot' && startsWith(needs.gate.outputs.model, 'github-copilot/')
         env:
           OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/opencode-data/opencode"
-          jq -n --arg token "$OPENCODE_AUTH" \
-            '{"github-copilot": {type: "oauth", refresh: $token, access: $token, expires: 0}}' \
-            > "$RUNNER_TEMP/opencode-data/opencode/auth.json"
-          chmod 600 "$RUNNER_TEMP/opencode-data/opencode/auth.json"
+        run: trusted_scripts/.github/actions/ai-review/configure-credentials.sh
 
       - name: Fetch review history
         if: needs.gate.outputs.stage == 'final-review'
@@ -194,54 +148,13 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           NAME: ${{ github.event.repository.name }}
           PR_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          set -euo pipefail
-          gh api graphql -F owner="$OWNER" -F name="$NAME" -F number="$PR_NUMBER" -f query='
-            query($owner: String!, $name: String!, $number: Int!) {
-              repository(owner: $owner, name: $name) {
-                pullRequest(number: $number) {
-                  comments(last: 100) { nodes { author { login } body } }
-                  reviews(last: 50) { nodes { author { login } state body commit { oid } } }
-                  reviewThreads(last: 100) {
-                    nodes {
-                      isResolved isOutdated path line
-                      comments(first: 20) { nodes { author { login } body } }
-                    }
-                  }
-                }
-              }
-            }' | jq '.data.repository.pullRequest' > "$RUNNER_TEMP/history.json"
+        run: trusted_scripts/.github/actions/ai-review/fetch-history.sh
 
       - name: Run review
         env:
-          OPENCODE_CONFIG: ${{ github.workspace }}/trusted_scripts/.github/actions/ai-review/opencode.json
-          XDG_DATA_HOME: ${{ runner.temp }}/opencode-data
           MODEL: ${{ needs.gate.outputs.model }}
           STAGE: ${{ needs.gate.outputs.stage }}
-          PROMPT_FILE: ${{ github.workspace }}/trusted_scripts/.github/actions/ai-review/${{ needs.gate.outputs.stage }}.md
-        run: |
-          set -euo pipefail
-          opencode models "${MODEL%%/*}" --refresh || true
-          FILES=(--file "$RUNNER_TEMP/pr.diff")
-          if [ -f "$RUNNER_TEMP/history.json" ]; then
-            FILES+=(--file "$RUNNER_TEMP/history.json")
-          fi
-          opencode run "$(cat "$PROMPT_FILE")" --pure --model "$MODEL" \
-            --dir "$RUNNER_TEMP/pr" "${FILES[@]}" \
-            > "$RUNNER_TEMP/output.txt" || true
-          AUTH="$XDG_DATA_HOME/opencode/auth.json"
-          if [ -f "$AUTH" ]; then
-            TOKEN=$(jq -r '.[].refresh' "$AUTH")
-            rm -f "$AUTH"
-            if grep -qF -- "$TOKEN" "$RUNNER_TEMP/output.txt"; then
-              echo "::error::The model output contains a credential"
-              exit 1
-            fi
-          fi
-          python3 trusted_scripts/.github/actions/ai-review/extract_findings.py \
-            "$RUNNER_TEMP/output.txt" "$RUNNER_TEMP/pr.files" "$RUNNER_TEMP/pr.diff" "$STAGE" \
-            > "$RUNNER_TEMP/findings.json"
-          cat "$RUNNER_TEMP/findings.json"
+        run: trusted_scripts/.github/actions/ai-review/run-review.sh
 
       - name: Upload findings
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -266,14 +179,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Fetch pull request as data
-        env:
-          PR_NUMBER: ${{ github.event.issue.number }}
-          HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
-          git checkout -B "ai-review-$PR_NUMBER" "$HEAD_SHA"
+      - name: Checkout reusable workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: trusted_scripts
+          persist-credentials: false
 
       - name: Download findings
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -282,13 +194,7 @@ jobs:
           path: ${{ runner.temp }}/findings
 
       - name: Install Crit
-        run: |
-          set -euo pipefail
-          curl -fsSLo "$RUNNER_TEMP/crit" \
-            https://github.com/tomasz-tomczyk/crit/releases/download/v0.23.2/crit-linux-amd64
-          echo "10aa756a3146362be3a349cc8223955e23a1cd6daa0abbb13dd500741f793a90  $RUNNER_TEMP/crit" \
-            | sha256sum --check
-          sudo install -m 0755 "$RUNNER_TEMP/crit" /usr/local/bin/crit
+        run: trusted_scripts/.github/actions/ai-review/install-crit.sh
 
       - name: Generate write app token
         id: app-token
@@ -307,29 +213,7 @@ jobs:
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
           STAGE: ${{ needs.gate.outputs.stage }}
           FINDINGS: ${{ runner.temp }}/findings/findings.json
-        run: |
-          set -euo pipefail
-          EVENT=$(jq -er '.event' "$FINDINGS")
-          VERDICT=$(jq -er '.verdict' "$FINDINGS")
-          SUMMARY=$(jq -er '.summary' "$FINDINGS")
-          BODY=$(printf 'AI %s of %s using `%s`\n\n**Verdict: %s**\n\n%s' \
-            "$STAGE" "$HEAD_SHA" "$MODEL" "$VERDICT" "$SUMMARY")
-          jq '.comments' "$FINDINGS" > "$RUNNER_TEMP/comments.json"
-          if [ "$(jq 'length' "$RUNNER_TEMP/comments.json")" -eq 0 ]; then
-            echo "::error::The pull request has no added lines to attach the review to"
-            exit 1
-          fi
-          crit comment --json --file "$RUNNER_TEMP/comments.json"
-          gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
-            | jq -r --arg prefix "AI $STAGE of " '.[]
-                | select(.user.type == "Bot" and .state == "CHANGES_REQUESTED"
-                         and (.body | startswith($prefix)))
-                | .id' \
-            | while read -r REVIEW_ID; do
-                gh api -X PUT "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID/dismissals" \
-                  -f message="Superseded by a newer AI $STAGE." -f event=DISMISS --silent
-              done
-          crit push "$PR_NUMBER" --event "$EVENT" --message "$BODY"
+        run: trusted_scripts/.github/actions/ai-review/publish.sh
 
   react:
     name: Update reaction
@@ -339,6 +223,14 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
+      - name: Checkout reusable workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: trusted_scripts
+          persist-credentials: false
+
       - name: Generate write app token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -355,15 +247,4 @@ jobs:
           REACTION_ID: ${{ needs.acknowledge.outputs.reaction_id }}
           REVIEW_RESULT: ${{ needs.review.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
-        run: |
-          set -euo pipefail
-          gh api -X DELETE "repos/$REPOSITORY/issues/comments/$COMMENT_ID/reactions/$REACTION_ID"
-          if [ "$PUBLISH_RESULT" = success ]; then
-            CONTENT=rocket
-          elif [ "$REVIEW_RESULT" = cancelled ] || [ "$PUBLISH_RESULT" = cancelled ]; then
-            exit 0
-          else
-            CONTENT=confused
-          fi
-          gh api -X POST "repos/$REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
-            -f content="$CONTENT" --silent
+        run: trusted_scripts/.github/actions/ai-review/update-reaction.sh

@@ -838,14 +838,12 @@ commands, edit files or fetch URLs.
 
 **Model configuration**
 
-Set the ``AI_REVIEW_MODEL`` repository or organization variable to choose
-the model (default: ``opencode/deepseek-v4.1-flash-free``).
-``AI_SECURITY_REVIEW_MODEL`` and ``AI_FINAL_REVIEW_MODEL`` override it for
-the other stages. To use GitHub Copilot models, set the
-``OPENCODE_PROVIDER`` variable to ``github-copilot`` and pass the Copilot
-token as the ``OPENCODE_AUTH`` secret. To use another model for a single
-review, add ``copilot/<model>`` or ``opencode/<model>`` after the command,
-e.g. ``/review copilot/gpt-6.1-terra``.
+``/review`` and ``/final-review`` use ``github-copilot/gpt-6.1-terra``,
+``/security-review`` uses ``github-copilot/gpt-6-astra``. These need the
+``OPENCODE_PROVIDER`` variable set to ``github-copilot`` and the Copilot
+token passed as the ``OPENCODE_AUTH`` secret. To use another model for a
+single review, add ``copilot/<model>`` or ``opencode/<model>`` after the
+command, e.g. ``/review opencode/deepseek-v4.1-flash-free``.
 
 **Usage Example**
 

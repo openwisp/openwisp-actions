@@ -14,8 +14,9 @@ from people and bots.
    accepted.
 2. Look for new critical issues or regressions in the current diff.
 
-Write the summary as three short lists: "Addressed:", "Outstanding:" and
-"Unclear:", one line per finding, or "None" when a list is empty.
+Write the summary as three sections, "Addressed", "Outstanding" and
+"Unclear", each with one short bullet per finding, or "None" when a
+section is empty.
 
 Add line comments only for outstanding findings and new critical issues.
 
@@ -33,7 +34,8 @@ Reply with ONLY this JSON and nothing else:
 
 ```json
 {"verdict": "Ready to merge" or "Needs changes" or "Inconclusive",
- "summary": "Addressed:\n- ...\nOutstanding:\n- ...\nUnclear:\n- ...",
+ "title": "<short title of the result>",
+ "summary": "##### Addressed\n- ...\n\n##### Outstanding\n- ...\n\n##### Unclear\n- ...",
  "comments": [{"file": "<path>", "line": <number>,
                "severity": "P1" or "P2" or "P3",
                "title": "<short title>",

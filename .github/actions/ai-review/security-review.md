@@ -28,12 +28,15 @@ Reply with ONLY this JSON and nothing else:
 
 ```json
 {"verdict": "No issues found" or "Issues found" or "Inconclusive",
- "summary": "<two or three sentences explaining the result>",
+ "title": "<short title of the result>",
+ "summary": "- <short bullet>\n- <short bullet>",
  "comments": [{"file": "<path>", "line": <number>,
                "severity": "P1" or "P2" or "P3",
                "title": "<short title>",
                "body": "<the risk, how it can be exploited, and what to do>"}]}
 ```
+
+Write the summary as two to four short bullets explaining the result.
 
 Use "Issues found" when there is any P1 or P2 finding. Use "Inconclusive"
 when missing context prevents a conclusion, and say what is missing.

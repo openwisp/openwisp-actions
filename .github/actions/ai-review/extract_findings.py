@@ -1,14 +1,11 @@
 """Extracts and validates the findings of an AI review.
 
-Usage: extract_findings.py <model-output> <changed-files> <diff> <stage>
+Usage: extract_findings.py <model-output> <diff> <stage>
 
-Prints the validated findings as JSON. When the model output does not
-contain valid findings, prints a comment review explaining that the
-review could not be completed.
-
-Crit only posts reviews which contain at least one line comment, so
-findings without line comments get one on the first added line of the
-diff, pointing to the review summary.
+- Prints the findings as JSON, or a "review not completed" fallback.
+- Keeps only line comments on new-side diff lines, which GitHub accepts.
+- Adds a comment pointing to the summary when there are none, because
+  Crit only posts reviews with at least one line comment.
 """
 
 import json
@@ -19,7 +16,7 @@ VERDICTS = {
     "review": {
         "Looks good": "comment",
         "Needs changes": "request-changes",
-        "Wrong direction": "request-changes",
+        "May be wrong direction": "request-changes",
     },
     "security-review": {
         "No issues found": "approve",
@@ -32,6 +29,7 @@ VERDICTS = {
         "Inconclusive": "comment",
     },
 }
+DIRECTION_VERDICTS = {"May be wrong direction"}
 SEVERITIES = ("P1", "P2", "P3")
 MAX_COMMENTS = 20
 MAX_BODY = 2000
@@ -39,11 +37,12 @@ MAX_SUMMARY = 4000
 MAX_TITLE = 100
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+HEADING = re.compile(r"\n+(?=#)")
 ANCHOR_BODY = "See the review summary."
 FALLBACK = {
     "event": "comment",
     "verdict": "Review not completed",
-    "summary": "The review could not be completed: the model output was not valid.",
+    "summary": "- The model did not return a valid review.",
     "comments": [],
 }
 
@@ -60,56 +59,68 @@ def find_json(text):
     return None
 
 
-def validate(data, changed_files, verdicts):
-    verdict = data.get("verdict")
-    summary = data.get("summary")
-    comments = data.get("comments", [])
-    if verdict not in verdicts:
+def format_comment(comment, lines):
+    if not isinstance(comment, dict):
         return None
-    if not isinstance(summary, str) or not summary.strip():
+    path = comment.get("file")
+    line = comment.get("line")
+    severity = comment.get("severity")
+    title = comment.get("title")
+    body = comment.get("body")
+    if not (
+        isinstance(line, int)
+        and not isinstance(line, bool)
+        and line in lines.get(path, ())
+        and severity in SEVERITIES
+        and isinstance(title, str)
+        and title.strip()
+        and isinstance(body, str)
+        and body.strip()
+    ):
         return None
-    if not isinstance(comments, list):
-        return None
-    valid_comments = []
-    for comment in comments[:MAX_COMMENTS]:
-        if not isinstance(comment, dict):
-            continue
-        path = comment.get("file")
-        line = comment.get("line")
-        severity = comment.get("severity")
-        title = comment.get("title")
-        body = comment.get("body")
-        if (
-            path in changed_files
-            and isinstance(line, int)
-            and not isinstance(line, bool)
-            and line > 0
-            and severity in SEVERITIES
-            and isinstance(title, str)
-            and title.strip()
-            and isinstance(body, str)
-            and body.strip()
-        ):
-            heading = f"**{severity} · {title.strip()[:MAX_TITLE]}**"
-            valid_comments.append(
-                {
-                    "file": path,
-                    "line": line,
-                    "body": f"{heading}\n\n{body.strip()[:MAX_BODY]}",
-                }
-            )
+    heading = f"**{severity} · {title.strip()[:MAX_TITLE]}**"
     return {
-        "event": verdicts[verdict],
-        "verdict": verdict,
-        "summary": summary.strip()[:MAX_SUMMARY],
-        "comments": valid_comments,
+        "file": path,
+        "line": line,
+        "body": f"{heading}\n\n{body.strip()[:MAX_BODY]}",
     }
 
 
-def first_added_line(diff):
+def validate(data, lines, verdicts):
+    verdict = data.get("verdict")
+    title = data.get("title")
+    summary = data.get("summary")
+    comments = data.get("comments", [])
+    if verdict not in verdicts or not isinstance(comments, list):
+        return None
+    if not isinstance(title, str) or not title.strip():
+        return None
+    if not isinstance(summary, str) or not summary.strip():
+        return None
+    formatted = (format_comment(comment, lines) for comment in comments[:MAX_COMMENTS])
+    return {
+        "event": verdicts[verdict],
+        "verdict": verdict,
+        "title": title.strip()[:MAX_TITLE],
+        "summary": HEADING.sub("\n\n", summary.strip())[:MAX_SUMMARY],
+        "comments": (
+            []
+            if verdict in DIRECTION_VERDICTS
+            else [comment for comment in formatted if comment]
+        ),
+    }
+
+
+def parse_diff(diff):
+    lines = {}
+    added = []
+    unchanged = []
     path = None
     line = 0
     for row in diff.splitlines():
+        if row.startswith("diff --git "):
+            path = None
+            continue
         if row.startswith("+++ "):
             path = row[6:] if row.startswith("+++ b/") else None
             continue
@@ -117,25 +128,23 @@ def first_added_line(diff):
         if match:
             line = int(match.group(1))
             continue
-        if path is None or row.startswith(("---", "\\")):
+        if path is None or row.startswith(("-", "\\")):
             continue
-        if row.startswith("+"):
-            return path, line
-        if not row.startswith("-"):
-            line += 1
-    return None
+        lines.setdefault(path, set()).add(line)
+        (added if row.startswith("+") else unchanged).append((path, line))
+        line += 1
+    anchor = (added or unchanged or [None])[0]
+    return lines, anchor
 
 
 def main():
     with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
         text = ANSI.sub("", f.read())
-    with open(sys.argv[2], encoding="utf-8") as f:
-        changed_files = {line.strip() for line in f if line.strip()}
-    with open(sys.argv[3], encoding="utf-8", errors="replace") as f:
-        anchor = first_added_line(f.read())
-    verdicts = VERDICTS[sys.argv[4]]
+    with open(sys.argv[2], encoding="utf-8", errors="replace") as f:
+        lines, anchor = parse_diff(f.read())
+    verdicts = VERDICTS[sys.argv[3]]
     data = find_json(text)
-    findings = validate(data, changed_files, verdicts) if data else None
+    findings = validate(data, lines, verdicts) if data else None
     findings = findings or dict(FALLBACK)
     if not findings["comments"] and anchor:
         findings["comments"] = [

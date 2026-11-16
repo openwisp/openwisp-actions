@@ -1,0 +1,36 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "shell": "/usr/local/bin/ai-review-shell",
+  "permission": {
+    "edit": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "external_directory": {
+      "*": "deny",
+      "/tmp/ai-review/data/**": "allow"
+    },
+    "skill": "deny",
+    "bash": {
+      "*": "deny",
+      "cd *": "allow",
+      "python *": "allow",
+      "python3 *": "allow",
+      "pip install *": "allow",
+      "pip3 install *": "allow",
+      "pytest*": "allow",
+      "./runtests*": "allow",
+      "./run-qa-checks*": "allow",
+      "./manage.py test*": "allow",
+      "node *": "allow",
+      "npm ci*": "allow",
+      "npm install*": "allow",
+      "npm test*": "allow",
+      "npm run test*": "allow",
+      "npx jest*": "allow",
+      "yarn install*": "allow",
+      "yarn test*": "allow",
+      "lua *": "allow",
+      "busted*": "allow"
+    }
+  }
+}

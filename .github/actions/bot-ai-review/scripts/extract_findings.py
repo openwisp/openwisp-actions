@@ -8,6 +8,7 @@ Usage: extract_findings.py <model-output> <diff> <stage>
   Crit only posts reviews with at least one line comment.
 """
 
+import ast
 import json
 import re
 import sys
@@ -17,6 +18,7 @@ VERDICTS = {
         "Looks good": "comment",
         "Needs changes": "request-changes",
         "May be wrong direction": "request-changes",
+        "Prompt injection detected": "request-changes",
     },
     "security-review": {
         "No issues found": "approve",
@@ -30,6 +32,7 @@ VERDICTS = {
     },
 }
 DIRECTION_VERDICTS = {"May be wrong direction"}
+INJECTION = "Prompt injection detected"
 SEVERITIES = ("P1", "P2", "P3")
 MAX_COMMENTS = 20
 MAX_BODY = 2000
@@ -68,7 +71,8 @@ def format_comment(comment, lines):
     title = comment.get("title")
     body = comment.get("body")
     if not (
-        isinstance(line, int)
+        isinstance(path, str)
+        and isinstance(line, int)
         and not isinstance(line, bool)
         and line in lines.get(path, ())
         and severity in SEVERITIES
@@ -91,7 +95,9 @@ def validate(data, lines, verdicts):
     title = data.get("title")
     summary = data.get("summary")
     comments = data.get("comments", [])
-    if verdict not in verdicts or not isinstance(comments, list):
+    if not isinstance(verdict, str) or verdict not in verdicts:
+        return None
+    if not isinstance(comments, list):
         return None
     if not isinstance(title, str) or not title.strip():
         return None
@@ -111,6 +117,28 @@ def validate(data, lines, verdicts):
     }
 
 
+def perimeter(data):
+    decision = data.get("security_perimeter")
+    boundary = data.get("boundary")
+    if decision == "NO":
+        return (
+            "\n\n**Security perimeter: NO.** A security review is not needed,"
+            " run `/final-review` next."
+        )
+    if decision == "YES" and isinstance(boundary, str) and boundary.strip():
+        return (
+            f"\n\n**Security perimeter: YES** ({boundary.strip()[:MAX_TITLE]})."
+            " Run `/security-review` next."
+        )
+    return None
+
+
+def unquote(name):
+    if name.startswith('"'):
+        return ast.literal_eval("b" + name).decode("utf-8", "replace")
+    return name
+
+
 def parse_diff(diff):
     lines = {}
     added = []
@@ -122,7 +150,8 @@ def parse_diff(diff):
             path = None
             continue
         if row.startswith("+++ "):
-            path = row[6:] if row.startswith("+++ b/") else None
+            name = unquote(row[4:].rstrip("\t"))
+            path = name[2:] if name.startswith("b/") else None
             continue
         match = HUNK.match(row)
         if match:
@@ -142,9 +171,12 @@ def main():
         text = ANSI.sub("", f.read())
     with open(sys.argv[2], encoding="utf-8", errors="replace") as f:
         lines, anchor = parse_diff(f.read())
-    verdicts = VERDICTS[sys.argv[3]]
+    stage = sys.argv[3]
     data = find_json(text)
-    findings = validate(data, lines, verdicts) if data else None
+    findings = validate(data, lines, VERDICTS[stage]) if data else None
+    if findings and stage == "review" and findings["verdict"] != INJECTION:
+        note = perimeter(data)
+        findings = {**findings, "summary": findings["summary"] + note} if note else None
     findings = findings or dict(FALLBACK)
     if not findings["comments"] and anchor:
         findings["comments"] = [

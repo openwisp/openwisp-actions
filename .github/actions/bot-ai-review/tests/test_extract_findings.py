@@ -1,13 +1,17 @@
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+SCRIPTS = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
+)
+sys.path.insert(0, SCRIPTS)
 
 from extract_findings import (  # noqa: E402
     ANCHOR_BODY,
@@ -96,6 +100,12 @@ class TestValidate(unittest.TestCase):
         result = validate(data, LINES, VERDICTS["review"])
         self.assertEqual(result["comments"], [])
 
+    def test_rejects_non_string_verdict(self):
+        for verdict in ([], {}):
+            with self.subTest(verdict=verdict):
+                data = {"verdict": verdict, "title": "T", "summary": "S"}
+                self.assertIsNone(validate(data, LINES, VERDICTS["review"]))
+
     def test_rejects_missing_title(self):
         data = {"verdict": "Looks good", "summary": "S", "comments": []}
         self.assertIsNone(validate(data, LINES, VERDICTS["review"]))
@@ -125,6 +135,8 @@ class TestValidate(unittest.TestCase):
     def test_drops_invalid_comments(self):
         invalid = [
             comment(file="other.py"),
+            comment(file=[]),
+            comment(file={}),
             comment(line=0),
             comment(line=9),
             comment(line=True),
@@ -170,9 +182,43 @@ class TestParseDiff(unittest.TestCase):
         diff = "--- a/app.py\n+++ b/app.py\n@@ -4,2 +4,1 @@\n keep\n-drop\n"
         self.assertEqual(parse_diff(diff), ({"app.py": {4}}, ("app.py", 4)))
 
+    def test_decodes_quoted_and_spaced_file_names(self):
+        cases = [
+            ('+++ "b/caf\\303\\251.py"', "café.py"),
+            ('+++ "b/tab\\there.py"', "tab\there.py"),
+            ('+++ "b/new\\nline.py"', "new\nline.py"),
+            ('+++ "b/quote\\"d.py"', 'quote"d.py'),
+            ("+++ b/with space.py\t", "with space.py"),
+        ]
+        for header, name in cases:
+            with self.subTest(name=name):
+                diff = f"--- /dev/null\n{header}\n@@ -0,0 +1 @@\n+x\n"
+                self.assertEqual(parse_diff(diff), ({name: {1}}, (name, 1)))
+
     def test_has_no_anchor_without_new_side_lines(self):
-        diff = "--- a/old.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\n"
-        self.assertEqual(parse_diff(diff), ({}, None))
+        changes = {
+            "deleted file": "git rm -q old.py",
+            "emptied file": ": >old.py",
+            "rename only": "git mv old.py new.py",
+            "binary only": "printf '\\0\\1' >data.bin",
+        }
+        for name, change in changes.items():
+            with self.subTest(change=name), tempfile.TemporaryDirectory() as repo:
+                script = (
+                    "git init -q && git config user.email a@b && git config user.name a"
+                    " && echo x >old.py && printf '\\0' >data.bin"
+                    " && git add . && git commit -qm base"
+                    f" && {change} && git add -A && git diff --cached"
+                )
+                diff = subprocess.run(
+                    script,
+                    shell=True,
+                    cwd=repo,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout
+                self.assertEqual(parse_diff(diff), ({}, None))
 
 
 class TestMain(unittest.TestCase):
@@ -199,6 +245,10 @@ class TestMain(unittest.TestCase):
             [{"file": "app.py", "line": 2, "body": ANCHOR_BODY}],
         )
 
+    def test_falls_back_on_wrong_types(self):
+        result = self.run_main('{"verdict": [], "title": "T", "summary": "S"}')
+        self.assertEqual(result["verdict"], FALLBACK["verdict"])
+
     def test_adds_anchor_when_there_are_no_comments(self):
         output = json.dumps(
             {"verdict": "No issues found", "title": "T", "summary": "S", "comments": []}
@@ -211,6 +261,7 @@ class TestMain(unittest.TestCase):
         output = json.dumps(
             {
                 "verdict": "Needs changes",
+                "security_perimeter": "NO",
                 "title": "T",
                 "summary": "S",
                 "comments": [comment()],
@@ -220,6 +271,78 @@ class TestMain(unittest.TestCase):
         self.assertEqual(result["event"], "request-changes")
         self.assertEqual(len(result["comments"]), 1)
         self.assertNotEqual(result["comments"][0]["body"], ANCHOR_BODY)
+
+    def review(self, **decision):
+        data = {"verdict": "Looks good", "title": "T", "summary": "S", **decision}
+        return self.run_main(json.dumps(data))
+
+    def test_recommends_security_review_when_perimeter_is_affected(self):
+        result = self.review(security_perimeter="YES", boundary="Device enrollment")
+        self.assertEqual(result["verdict"], "Looks good")
+        self.assertTrue(
+            result["summary"].endswith(
+                "**Security perimeter: YES** (Device enrollment)."
+                " Run `/security-review` next."
+            )
+        )
+
+    def test_recommends_final_review_when_perimeter_is_not_affected(self):
+        result = self.review(security_perimeter="NO")
+        self.assertEqual(result["verdict"], "Looks good")
+        self.assertTrue(
+            result["summary"].endswith(
+                "**Security perimeter: NO.** A security review is not needed,"
+                " run `/final-review` next."
+            )
+        )
+
+    def test_falls_back_without_a_perimeter_decision(self):
+        cases = [
+            {},
+            {"security_perimeter": "MAYBE"},
+            {"security_perimeter": "YES"},
+            {"security_perimeter": "YES", "boundary": " "},
+            {"security_perimeter": "YES", "boundary": []},
+        ]
+        for decision in cases:
+            with self.subTest(decision=decision):
+                result = self.review(**decision)
+                self.assertEqual(result["verdict"], FALLBACK["verdict"])
+
+    def test_reports_prompt_injection_without_a_perimeter_decision(self):
+        output = json.dumps(
+            {
+                "verdict": "Prompt injection detected",
+                "title": "T",
+                "summary": "S",
+                "comments": [comment()],
+            }
+        )
+        result = self.run_main(output)
+        self.assertEqual(result["event"], "request-changes")
+        self.assertEqual(result["summary"], "S")
+        self.assertEqual(len(result["comments"]), 1)
+        self.assertNotEqual(result["comments"][0]["body"], ANCHOR_BODY)
+
+    def test_rejects_prompt_injection_verdict_in_other_stages(self):
+        output = json.dumps(
+            {"verdict": "Prompt injection detected", "title": "T", "summary": "S"}
+        )
+        for stage in ("security-review", "final-review"):
+            with self.subTest(stage=stage):
+                result = self.run_main(output, stage=stage)
+                self.assertEqual(result["verdict"], FALLBACK["verdict"])
+
+    def test_other_stages_do_not_need_a_perimeter_decision(self):
+        for stage, verdict in (
+            ("security-review", "No issues found"),
+            ("final-review", "Ready to merge"),
+        ):
+            with self.subTest(stage=stage):
+                output = json.dumps({"verdict": verdict, "title": "T", "summary": "S"})
+                result = self.run_main(output, stage=stage)
+                self.assertEqual(result["verdict"], verdict)
+                self.assertEqual(result["summary"], "S")
 
 
 if __name__ == "__main__":

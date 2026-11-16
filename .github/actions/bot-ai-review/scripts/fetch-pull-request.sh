@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PR_DIR="$RUNNER_TEMP/pr"
+DIR=$(dirname "$(realpath "$0")")
 git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
 git worktree add --detach "$PR_DIR" "$HEAD_SHA"
-git diff "$BASE_SHA...$HEAD_SHA" >"$RUNNER_TEMP/pr.diff"
+rm "$PR_DIR/.git"
+mkdir -p "$DATA_DIR"
+git diff "$BASE_SHA...$HEAD_SHA" >"$DATA_DIR/pr.diff"
+python3 "$DIR/guidance.py" "$BASE_SHA" "$HEAD_SHA" >"$DATA_DIR/guidance.md"
 find "$PR_DIR" -type l -delete
 find "$PR_DIR" \( -name .opencode -o -name opencode.json -o -name opencode.jsonc \
   -o -name AGENTS.md -o -name CLAUDE.md -o -name CONTEXT.md \) -prune -exec rm -rf {} +
-if [ -f AGENTS.md ]; then
-  cp AGENTS.md "$PR_DIR/AGENTS.md"
-fi
+chmod -R a+rX,go-w "$PR_DIR"

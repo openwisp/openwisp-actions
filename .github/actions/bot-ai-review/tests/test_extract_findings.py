@@ -36,6 +36,9 @@ DIFF = """diff --git a/app.py b/app.py
  print(os.name)
 """
 LINES = {"app.py": {1, 2, 3}}
+FINAL_CLEAR = (
+    "##### Addressed\n- Fixed\n\n##### Outstanding\n- None\n\n##### Unclear\n- None"
+)
 
 
 def comment(**overrides):
@@ -169,7 +172,7 @@ class TestValidate(unittest.TestCase):
                 data = {
                     "verdict": verdict,
                     "title": "T",
-                    "summary": "S",
+                    "summary": FINAL_CLEAR if verdict == "Ready to merge" else "S",
                     "comments": [],
                 }
                 result = validate(data, LINES, VERDICTS[stage])
@@ -410,7 +413,12 @@ class TestMain(unittest.TestCase):
 
     def test_adds_anchor_when_there_are_no_comments(self):
         output = json.dumps(
-            {"verdict": "Ready to merge", "title": "T", "summary": "S", "comments": []}
+            {
+                "verdict": "Ready to merge",
+                "title": "T",
+                "summary": FINAL_CLEAR,
+                "comments": [],
+            }
         )
         result = self.run_main(output, stage="final-review")
         self.assertEqual(result["event"], "approve")
@@ -505,10 +513,13 @@ class TestMain(unittest.TestCase):
             ("final-review", "Ready to merge"),
         ):
             with self.subTest(stage=stage):
-                output = json.dumps({"verdict": verdict, "title": "T", "summary": "S"})
+                summary = FINAL_CLEAR if stage == "final-review" else "S"
+                output = json.dumps(
+                    {"verdict": verdict, "title": "T", "summary": summary}
+                )
                 result = self.run_main(output, stage=stage)
                 self.assertEqual(result["verdict"], verdict)
-                self.assertEqual(result["summary"], "S")
+                self.assertEqual(result["summary"], summary)
 
     def test_waits_for_maintainer_decision_before_recommending_next_review(self):
         for decision in (
@@ -536,7 +547,7 @@ class TestMain(unittest.TestCase):
                         {
                             "verdict": "Ready to merge",
                             "title": "T",
-                            "summary": "S",
+                            "summary": FINAL_CLEAR,
                             "comments": [comment(severity=severity, file=path)],
                         }
                     )
@@ -549,7 +560,7 @@ class TestMain(unittest.TestCase):
             {
                 "verdict": "Ready to merge",
                 "title": "T",
-                "summary": "S",
+                "summary": FINAL_CLEAR,
                 "comments": [comment(severity="P3")],
             }
         )
@@ -562,7 +573,7 @@ class TestMain(unittest.TestCase):
             {
                 "verdict": "Ready to merge",
                 "title": "T",
-                "summary": "S",
+                "summary": FINAL_CLEAR,
                 "comments": [{"severity": "P1"}],
             }
         )
@@ -608,6 +619,42 @@ class TestMain(unittest.TestCase):
                 )
                 result = self.run_main(output, stage=stage)
                 self.assertEqual(result["verdict"], verdict)
+
+    def test_final_review_cannot_approve_outstanding_or_unclear_summary(self):
+        summaries = (
+            FINAL_CLEAR.replace(
+                "##### Outstanding\n- None", "##### Outstanding\n- A bug remains"
+            ),
+            FINAL_CLEAR.replace(
+                "##### Unclear\n- None", "##### Unclear\n- Fix could not be verified"
+            ),
+            "The review is incomplete.",
+        )
+        for summary in summaries:
+            with self.subTest(summary=summary):
+                output = json.dumps(
+                    {"verdict": "Ready to merge", "title": "T", "summary": summary}
+                )
+                result = self.run_main(output, stage="final-review")
+                self.assertEqual(result["verdict"], "Review not completed")
+                self.assertEqual(result["event"], "comment")
+
+    def test_final_review_can_approve_when_summary_is_clear(self):
+        output = json.dumps(
+            {"verdict": "Ready to merge", "title": "T", "summary": FINAL_CLEAR}
+        )
+        result = self.run_main(output, stage="final-review")
+        self.assertEqual(result["event"], "approve")
+
+    def test_final_review_ignores_headings_inside_code_examples(self):
+        summary = FINAL_CLEAR.replace(
+            "- Fixed", "- Fixed\n\n```python\n##### Outstanding\n```"
+        )
+        output = json.dumps(
+            {"verdict": "Ready to merge", "title": "T", "summary": summary}
+        )
+        result = self.run_main(output, stage="final-review")
+        self.assertEqual(result["event"], "approve")
 
 
 if __name__ == "__main__":

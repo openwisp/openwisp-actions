@@ -32,7 +32,9 @@ from people and bots.
 
 Write the summary as three sections, "Addressed", "Outstanding" and
 "Unclear", each with one short bullet per finding, or "None" when a
-section is empty.
+section is empty. Use the exact headings shown below. For "Ready to merge",
+write exactly "- None" under both "Outstanding" and "Unclear". If either
+section has a finding or cannot be determined, do not approve.
 
 Add line comments only for new critical issues, and for outstanding
 findings whose earlier thread is resolved or outdated. Do not repeat

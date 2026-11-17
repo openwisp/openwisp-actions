@@ -195,6 +195,42 @@ class TestPublish(unittest.TestCase):
                 log, _ = publish(findings, comments=findings["comments"], stage=stage)
                 self.assertEqual(dismissals(log), [])
 
+    def test_unresolved_final_summary_keeps_earlier_change_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = os.path.join(directory, "output.json")
+            diff = os.path.join(directory, "pr.diff")
+            with open(output, "w") as f:
+                json.dump(
+                    {
+                        "verdict": "Ready to merge",
+                        "title": "T",
+                        "summary": "##### Addressed\n- None\n\n"
+                        "##### Outstanding\n- Bug\n\n##### Unclear\n- None",
+                        "comments": [],
+                    },
+                    f,
+                )
+            with open(diff, "w") as f:
+                f.write("--- /dev/null\n+++ b/a.py\n@@ -0,0 +1 @@\n+x\n")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    os.path.join(SCRIPTS, "extract_findings.py"),
+                    output,
+                    diff,
+                    "final-review",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            findings = json.loads(result.stdout)
+            self.assertEqual(findings["verdict"], "Review not completed")
+            log, _ = publish(
+                findings, comments=findings["comments"], stage="final-review"
+            )
+            self.assertEqual(dismissals(log), [])
+
 
 if __name__ == "__main__":
     unittest.main()

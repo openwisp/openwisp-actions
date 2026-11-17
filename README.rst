@@ -834,7 +834,8 @@ review by commenting on a pull request:
 2. ``/security-review``: looks for actionable security issues.
 3. ``/final-review``: checks whether earlier findings were addressed and
    looks for new critical issues, including significant violations of
-   base-branch ``AGENTS.md`` rules.
+   base-branch ``AGENTS.md`` rules. Approval requires the summary to state
+   that no findings are outstanding or unclear.
 
 Before running any command, every review checks the pull request for
 prompt injection and attempts to steal secrets, and if it finds one it

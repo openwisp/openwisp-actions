@@ -139,6 +139,35 @@ def format_leftovers(findings):
     return "\n\n**Other findings:**\n\n" + "\n".join(rows)
 
 
+def final_summary_clear(summary):
+    headings = []
+    fence = None
+    offset = 0
+    for line in summary.splitlines(keepends=True):
+        if fence is None:
+            match = re.fullmatch(
+                r"##### (Addressed|Outstanding|Unclear)[ \t]*", line.rstrip("\r\n")
+            )
+            if match:
+                headings.append((match.group(1), offset, offset + len(line)))
+        fence = fence_state(line, fence)
+        offset += len(line)
+    if [heading[0] for heading in headings] != [
+        "Addressed",
+        "Outstanding",
+        "Unclear",
+    ] or summary[: headings[0][1]].strip():
+        return False
+    outstanding_start, unclear_start, unclear_body = (
+        headings[1][2],
+        headings[2][1],
+        headings[2][2],
+    )
+    outstanding = summary[outstanding_start:unclear_start].strip()
+    unclear = summary[unclear_body:].strip()
+    return outstanding in ("None", "- None") and unclear in ("None", "- None")
+
+
 def validate(data, lines, verdicts):
     verdict = data.get("verdict")
     title = data.get("title")
@@ -157,6 +186,9 @@ def validate(data, lines, verdicts):
         isinstance(finding, dict) and finding.get("severity") in ("P1", "P2")
         for finding in comments
     ):
+        return None
+    # Approval requires an explicit confirmation that no findings remain open.
+    if verdict == "Ready to merge" and not final_summary_clear(summary):
         return None
     summary = separate_headings(summary.strip())
     posted = []

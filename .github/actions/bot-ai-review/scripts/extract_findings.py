@@ -20,6 +20,7 @@ VERDICTS = {
         "Needs changes": "request-changes",
         "May be wrong direction": "request-changes",
         "Prompt injection detected": "request-changes",
+        "Maintainer decision needed": "comment",
     },
     "security-review": {
         "No issues found": "comment",
@@ -170,10 +171,15 @@ def validate(data, lines, verdicts):
     }
 
 
-def perimeter(data):
+def perimeter(data, decision_pending=False):
     decision = data.get("security_perimeter")
     boundary = data.get("boundary")
     if decision == "NO":
+        if decision_pending:
+            return (
+                "\n\n**Security perimeter: NO.** Resolve the maintainer decision"
+                " before requesting the final review."
+            )
         return (
             "\n\n**Security perimeter: NO.** A security review is not needed,"
             " run `/final-review` next."
@@ -240,7 +246,7 @@ def main():
     data = find_json(text)
     findings = validate(data, lines, VERDICTS[stage]) if data else None
     if findings and stage == "review" and findings["verdict"] != INJECTION:
-        note = perimeter(data)
+        note = perimeter(data, findings["verdict"] == "Maintainer decision needed")
         findings = {**findings, "summary": findings["summary"] + note} if note else None
     findings = findings or dict(FALLBACK)
     if not findings["comments"] and anchor:

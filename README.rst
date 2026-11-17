@@ -825,30 +825,34 @@ review by commenting on a pull request:
 
 1. ``/review``: checks whether the pull request is worth the effort (root
    cause or workaround, approach, ``AGENTS.md`` rules, performance and
-   race conditions). Using the `OpenWISP Threat Model
+   race conditions). When an important design choice depends on missing
+   context or maintainer priorities, it explains the options and asks for
+   a maintainer decision. Using the `OpenWISP Threat Model
    <https://github.com/openwisp/openwisp-docs/blob/master/security/threat-model.rst>`_,
    it also states whether the change affects the security perimeter and
    recommends ``/security-review`` or ``/final-review`` next.
 2. ``/security-review``: looks for actionable security issues.
 3. ``/final-review``: checks whether earlier findings were addressed and
-   looks for new critical issues.
+   looks for new critical issues, including significant violations of
+   base-branch ``AGENTS.md`` rules.
 
 Before running any command, every review checks the pull request for
 prompt injection and attempts to steal secrets, and if it finds one it
 stops and requests changes with the evidence.
 
 The OpenWISP bot publishes the review with a verdict, a summary and inline
-comments labeled ``P1`` to ``P3``, and dismisses its earlier change
-requests of the same stage. To verify its findings, the model can search
-the web, fetch pages, edit a temporary copy of the pull request and run
-allowed commands, such as tests. Commands run as a separate user that
-cannot read the model credentials, and the model has no access to the
-workflow's GitHub tokens. Pull request content, tool output and fetched
-pages are treated as untrusted data. Each review also reads the pull
-request title, description and discussion, and the OpenWISP issues linked
-in the description, as data. The writing and review rules shared by
-OpenWISP AI tools are read by the OpenWISP bot from the ``AGENTS.md`` of
-`openwisp-opencode-configs
+comments labeled ``P1`` to ``P3``. A ``Maintainer decision needed``
+verdict is posted as a comment and keeps earlier change requests of the
+same stage. Conclusive reviews dismiss earlier change requests of the same
+stage. To verify its findings, the model can search the web, fetch pages,
+edit a temporary copy of the pull request and run allowed commands, such
+as tests. Commands run as a separate user that cannot read the model
+credentials, and the model has no access to the workflow's GitHub tokens.
+Pull request content, tool output and fetched pages are treated as
+untrusted data. Each review also reads the pull request title, description
+and discussion, and the OpenWISP issues linked in the description, as
+data. The writing and review rules shared by OpenWISP AI tools are read by
+the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
 <https://github.com/openwisp/openwisp-opencode-configs>`_; if a section is
 missing, the review notes it in its summary.
 

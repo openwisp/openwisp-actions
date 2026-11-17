@@ -162,6 +162,7 @@ class TestValidate(unittest.TestCase):
             ("security-review", "Inconclusive", "comment"),
             ("final-review", "Ready to merge", "approve"),
             ("final-review", "Needs changes", "request-changes"),
+            ("review", "Maintainer decision needed", "comment"),
         ]
         for stage, verdict, event in cases:
             with self.subTest(stage=stage, verdict=verdict):
@@ -508,6 +509,24 @@ class TestMain(unittest.TestCase):
                 result = self.run_main(output, stage=stage)
                 self.assertEqual(result["verdict"], verdict)
                 self.assertEqual(result["summary"], "S")
+
+    def test_waits_for_maintainer_decision_before_recommending_next_review(self):
+        for decision in (
+            {"security_perimeter": "NO"},
+            {"security_perimeter": "YES", "boundary": "Device enrollment"},
+        ):
+            with self.subTest(decision=decision):
+                result = self.review(
+                    verdict="Maintainer decision needed",
+                    summary="A maintainer decision is needed.",
+                    **decision,
+                )
+                self.assertEqual(result["verdict"], "Maintainer decision needed")
+                self.assertEqual(result["event"], "comment")
+                self.assertIn("maintainer decision", result["summary"].lower())
+                self.assertNotIn("`/final-review` next", result["summary"])
+                if decision["security_perimeter"] == "YES":
+                    self.assertIn("`/security-review` next", result["summary"])
 
 
 if __name__ == "__main__":

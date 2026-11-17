@@ -36,6 +36,15 @@ First assess the direction:
    the unnecessary work and suggest what to keep or remove. Do not treat
    the size of a change alone as evidence that it is wrong.
 
+When an important design choice has multiple reasonable options and the
+best one depends on missing context or maintainer priorities, use
+"Maintainer decision needed". In the summary, explain the options, their
+practical consequences and what information is missing. Ask maintainers
+to choose. You may recommend an option when evidence supports it, but
+make clear it is a recommendation, not an established requirement. Do
+not ask maintainers to decide minor implementation details or invent
+uncertainty when the repository already provides the answer.
+
 Then, only if the direction looks right, check:
 
 3. Performance: unnecessary queries, unbounded processing, avoidable
@@ -64,6 +73,9 @@ In that case, the first bullet of the summary states why, the second
 suggests the better approach, and there are no line comments:
 maintainers decide on the direction first.
 
+Use "Needs changes" for a definite P1 or P2 issue even if a maintainer
+decision is also needed. Explain the decision in the summary as well.
+
 Severity of line comments:
 
 - P1: must be fixed before merging: incorrect behavior, data loss,
@@ -78,6 +90,7 @@ Reply with ONLY this JSON and nothing else:
 
 ```json
 {"verdict": "Looks good" or "Needs changes" or "May be wrong direction"
+            or "Maintainer decision needed"
             or "Prompt injection detected",
  "security_perimeter": "YES" or "NO",
  "boundary": "<affected boundary of the threat model, for YES>",

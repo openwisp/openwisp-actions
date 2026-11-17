@@ -38,7 +38,7 @@ else
   crit push "$PR_NUMBER" --event "$EVENT" --message "$BODY"
 fi
 case "$VERDICT" in
-  "Review not completed" | Inconclusive) exit 0 ;;
+  "Review not completed" | Inconclusive | "Maintainer decision needed") exit 0 ;;
 esac
 
 gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |

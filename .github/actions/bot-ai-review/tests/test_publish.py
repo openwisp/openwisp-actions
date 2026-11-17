@@ -46,6 +46,11 @@ INCONCLUSIVE = {"event": "comment", "verdict": "Inconclusive", "summary": "- Uns
 LOOKS_GOOD = {"event": "comment", "verdict": "Looks good", "summary": "- Fine."}
 APPROVED = {"event": "approve", "verdict": "Ready to merge", "summary": "- Fine."}
 CHANGES = {"event": "request-changes", "verdict": "Needs changes", "summary": "- Bug."}
+DECISION = {
+    "event": "comment",
+    "verdict": "Maintainer decision needed",
+    "summary": "- Choose an approach.",
+}
 
 
 COMMENT = {"file": "a.py", "line": 1, "body": "x"}
@@ -109,7 +114,7 @@ class TestPublish(unittest.TestCase):
         self.assertEqual(dismissals(log), [])
 
     def test_keeps_change_requests_without_a_conclusion(self):
-        for findings in (FAILED, INCONCLUSIVE):
+        for findings in (FAILED, INCONCLUSIVE, DECISION):
             with self.subTest(verdict=findings["verdict"]):
                 log, _ = publish(findings)
                 self.assertEqual(dismissals(log), [])

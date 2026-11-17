@@ -24,7 +24,7 @@ fi
 opencode models "${MODEL%%/*}" --refresh || true
 chmod a-w "$DATA_DIR"/*
 FILES=(--file "$DATA_DIR/pr.diff")
-if [ "$STAGE" = review ] && [ -s "$DATA_DIR/guidance.md" ]; then
+if { [ "$STAGE" = review ] || [ "$STAGE" = final-review ]; } && [ -s "$DATA_DIR/guidance.md" ]; then
   FILES+=(--file "$DATA_DIR/guidance.md")
 fi
 if [ "$STAGE" = review ]; then

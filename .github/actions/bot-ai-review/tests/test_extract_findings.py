@@ -23,6 +23,7 @@ from extract_findings import (  # noqa: E402
     find_json,
     main,
     parse_diff,
+    perimeter,
     validate,
 )
 
@@ -85,7 +86,7 @@ class TestValidate(unittest.TestCase):
         result = validate(data, LINES, VERDICTS["review"])
         self.assertIn(body, result["summary"])
 
-    def test_oversized_code_example_is_not_cut_mid_fence(self):
+    def test_preserves_very_long_code_example(self):
         body = "Why this matters.\n\n```python\n" + "    check()\n" * 2000 + "```"
         data = {
             "verdict": "Needs changes",
@@ -95,8 +96,26 @@ class TestValidate(unittest.TestCase):
         }
         result = validate(data, LINES, VERDICTS["review"])
         rendered = result["comments"][0]["body"]
-        self.assertEqual(rendered.count("```") % 2, 0)
-        self.assertIn("shortened", rendered)
+        self.assertTrue(rendered.endswith(body))
+
+    def test_preserves_long_summary_and_titles(self):
+        summary = "Important context. " * 1000
+        title = "A meaningful title " * 10
+        boundary = "Affected boundary " * 10
+        data = {
+            "verdict": "Needs changes",
+            "title": title,
+            "summary": summary,
+            "comments": [comment(title=title)],
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertEqual(result["title"], title.strip())
+        self.assertEqual(result["summary"], summary.strip())
+        self.assertIn(title.strip(), result["comments"][0]["body"])
+        self.assertIn(
+            boundary.strip(),
+            perimeter({"security_perimeter": "YES", "boundary": boundary}),
+        )
 
     def test_summary_keeps_comments_inside_code_blocks(self):
         summary = "Example:\n\n```python\n# Explain the regression\nassert False\n```"
@@ -110,7 +129,7 @@ class TestValidate(unittest.TestCase):
             validate(data, LINES, VERDICTS["final-review"])["summary"], summary
         )
 
-    def test_reports_when_extra_findings_exceed_summary_limit(self):
+    def test_preserves_all_extra_findings_in_summary(self):
         comments = [
             comment(file="other.py", title=f"T{n}") for n in range(MAX_COMMENTS + 1)
         ]
@@ -121,7 +140,19 @@ class TestValidate(unittest.TestCase):
             "comments": comments,
         }
         result = validate(data, LINES, VERDICTS["review"])
-        self.assertIn("Additional findings omitted", result["summary"])
+        for item in comments:
+            self.assertIn(item["title"], result["summary"])
+
+    def test_preserves_long_extra_findings_in_summary(self):
+        body = "```python\n" + "    check()\n" * 4000 + "```"
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": [comment(file="other.py", body=body)],
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertIn(body, result["summary"])
 
     def test_maps_verdict_to_event_per_stage(self):
         cases = [

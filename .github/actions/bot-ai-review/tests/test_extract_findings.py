@@ -528,6 +528,48 @@ class TestMain(unittest.TestCase):
                 if decision["security_perimeter"] == "YES":
                     self.assertIn("`/security-review` next", result["summary"])
 
+    def test_final_review_cannot_approve_serious_findings(self):
+        for severity in ("P1", "P2"):
+            for path in ("app.py", "other.py"):
+                with self.subTest(severity=severity, path=path):
+                    output = json.dumps(
+                        {
+                            "verdict": "Ready to merge",
+                            "title": "T",
+                            "summary": "S",
+                            "comments": [comment(severity=severity, file=path)],
+                        }
+                    )
+                    result = self.run_main(output, stage="final-review")
+                    self.assertEqual(result["verdict"], "Review not completed")
+                    self.assertEqual(result["event"], "comment")
+
+    def test_final_review_can_approve_with_p3_finding(self):
+        output = json.dumps(
+            {
+                "verdict": "Ready to merge",
+                "title": "T",
+                "summary": "S",
+                "comments": [comment(severity="P3")],
+            }
+        )
+        result = self.run_main(output, stage="final-review")
+        self.assertEqual(result["verdict"], "Ready to merge")
+        self.assertEqual(result["event"], "approve")
+
+    def test_final_review_cannot_approve_malformed_serious_finding(self):
+        output = json.dumps(
+            {
+                "verdict": "Ready to merge",
+                "title": "T",
+                "summary": "S",
+                "comments": [{"severity": "P1"}],
+            }
+        )
+        result = self.run_main(output, stage="final-review")
+        self.assertEqual(result["verdict"], "Review not completed")
+        self.assertEqual(result["event"], "comment")
+
 
 if __name__ == "__main__":
     unittest.main()

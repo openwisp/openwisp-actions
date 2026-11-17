@@ -152,6 +152,12 @@ def validate(data, lines, verdicts):
         return None
     if not isinstance(summary, str) or not summary.strip():
         return None
+    # A conflicting serious finding makes approval unsafe, even if malformed.
+    if verdict == "Ready to merge" and any(
+        isinstance(finding, dict) and finding.get("severity") in ("P1", "P2")
+        for finding in comments
+    ):
+        return None
     summary = separate_headings(summary.strip())
     posted = []
     leftovers = []

@@ -38,13 +38,15 @@ DIRECTION_VERDICTS = {"May be wrong direction"}
 INJECTION = "Prompt injection detected"
 SEVERITIES = ("P1", "P2", "P3")
 MAX_COMMENTS = 20
-MAX_BODY = 2000
-MAX_SUMMARY = 4000
+MAX_BODY = 12000
+MAX_SUMMARY = 12000
 MAX_TITLE = 100
-MAX_LEFTOVER_BODY = 500
+MAX_LEFTOVER_BODY = 6000
+MAX_LEFTOVERS = 40000
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-HEADING = re.compile(r"\n+(?=#)")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+SHORTENED = "\n\n[Content shortened to fit the review.]"
 ANCHOR_BODY = "See the review summary."
 FALLBACK = {
     "event": "comment",
@@ -95,12 +97,57 @@ def parse_finding(comment):
     }
 
 
+def fence_state(line, current):
+    match = FENCE.match(line)
+    if not match:
+        return current
+    marker = match.group(1)
+    if current is None:
+        return marker
+    if marker[0] == current[0] and len(marker) >= len(current):
+        return None
+    return current
+
+
+def shorten(text, limit):
+    if len(text) <= limit:
+        return text
+    prefix = text[: limit - len(SHORTENED)]
+    last_newline = prefix.rfind("\n")
+    if last_newline >= 0:
+        prefix = prefix[:last_newline]
+    fence = None
+    fence_start = None
+    offset = 0
+    for line in prefix.splitlines(keepends=True):
+        previous = fence
+        fence = fence_state(line, fence)
+        if previous is None and fence is not None:
+            fence_start = offset
+        offset += len(line)
+    # An incomplete code block would hide the remainder of the review.
+    if fence is not None:
+        prefix = prefix[:fence_start]
+    return prefix.rstrip() + SHORTENED
+
+
+def separate_headings(text):
+    lines = []
+    fence = None
+    for line in text.splitlines(keepends=True):
+        if fence is None and line.startswith("#") and lines and lines[-1].strip():
+            lines.append("\n")
+        lines.append(line)
+        fence = fence_state(line, fence)
+    return "".join(lines)
+
+
 def format_comment(finding):
     heading = f"**{finding['severity']} · {finding['title']}**"
     return {
         "file": finding["file"],
         "line": finding["line"],
-        "body": f"{heading}\n\n{finding['body'][:MAX_BODY]}",
+        "body": f"{heading}\n\n{shorten(finding['body'], MAX_BODY)}",
     }
 
 
@@ -108,14 +155,24 @@ def format_leftovers(findings):
     if not findings:
         return ""
     rows = []
-    for finding in findings[:MAX_COMMENTS]:
+    for index, finding in enumerate(findings):
+        if index == MAX_COMMENTS:
+            rows.append(
+                "- Additional findings omitted to keep the review within its size limit."
+            )
+            break
         location = finding["file"]
         if finding["line"] is not None:
             location += f":{finding['line']}"
-        body = " ".join(finding["body"].split())[:MAX_LEFTOVER_BODY]
-        rows.append(
-            f"- {finding['severity']} · `{location}` · {finding['title']}: {body}"
-        )
+        body = shorten(finding["body"], MAX_LEFTOVER_BODY)
+        separator = "\n\n" if "\n" in body else ": "
+        row = f"- {finding['severity']} · `{location}` · {finding['title']}{separator}{body}"
+        if sum(len(item) for item in rows) + len(row) > MAX_LEFTOVERS:
+            rows.append(
+                "- Additional findings omitted to keep the review within its size limit."
+            )
+            break
+        rows.append(row)
     return "\n\n**Other findings:**\n\n" + "\n".join(rows)
 
 
@@ -132,7 +189,7 @@ def validate(data, lines, verdicts):
         return None
     if not isinstance(summary, str) or not summary.strip():
         return None
-    summary = HEADING.sub("\n\n", summary.strip())[:MAX_SUMMARY]
+    summary = shorten(separate_headings(summary.strip()), MAX_SUMMARY)
     posted = []
     leftovers = []
     if verdict not in DIRECTION_VERDICTS:

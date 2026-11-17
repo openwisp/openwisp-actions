@@ -63,6 +63,66 @@ class TestFindJson(unittest.TestCase):
 
 
 class TestValidate(unittest.TestCase):
+    def test_preserves_long_code_example_in_line_comment(self):
+        body = "Why this matters.\n\n```python\n" + "    check()\n" * 250 + "```"
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": [comment(body=body)],
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertTrue(result["comments"][0]["body"].endswith(body))
+
+    def test_preserves_code_example_for_finding_outside_diff(self):
+        body = "A focused test:\n\n```python\ndef test_bug():\n    assert False\n```"
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": [comment(file="other.py", body=body)],
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertIn(body, result["summary"])
+
+    def test_oversized_code_example_is_not_cut_mid_fence(self):
+        body = "Why this matters.\n\n```python\n" + "    check()\n" * 2000 + "```"
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": [comment(body=body)],
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        rendered = result["comments"][0]["body"]
+        self.assertEqual(rendered.count("```") % 2, 0)
+        self.assertIn("shortened", rendered)
+
+    def test_summary_keeps_comments_inside_code_blocks(self):
+        summary = "Example:\n\n```python\n# Explain the regression\nassert False\n```"
+        data = {"verdict": "Needs changes", "title": "T", "summary": summary}
+        self.assertEqual(validate(data, LINES, VERDICTS["review"])["summary"], summary)
+
+    def test_keeps_existing_spacing_before_summary_heading(self):
+        summary = "##### Addressed\n- None\n\n##### Outstanding\n- A"
+        data = {"verdict": "Needs changes", "title": "T", "summary": summary}
+        self.assertEqual(
+            validate(data, LINES, VERDICTS["final-review"])["summary"], summary
+        )
+
+    def test_reports_when_extra_findings_exceed_summary_limit(self):
+        comments = [
+            comment(file="other.py", title=f"T{n}") for n in range(MAX_COMMENTS + 1)
+        ]
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": comments,
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertIn("Additional findings omitted", result["summary"])
+
     def test_maps_verdict_to_event_per_stage(self):
         cases = [
             ("review", "Looks good", "comment"),

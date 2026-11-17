@@ -34,7 +34,7 @@ def thread(id, resolved):
     return {
         "isResolved": resolved,
         "isOutdated": False,
-        "comments": {"nodes": [{"databaseId": id}]},
+        "comments": {"nodes": [{"fullDatabaseId": str(id)}]},
     }
 
 
@@ -45,6 +45,16 @@ def thread_page(threads):
 
 
 class TestHistory(unittest.TestCase):
+    def test_matches_large_graphql_ids_to_rest_ids(self):
+        identifier = 4600923507
+        history = self.run_main(
+            self.files(
+                [[review_comment(identifier)]],
+                [thread_page([thread(identifier, True)])],
+            )
+        )
+        self.assertTrue(history["threads"][0]["resolved"])
+
     def run_main(self, files):
         with tempfile.TemporaryDirectory() as directory:
             for name, content in files.items():

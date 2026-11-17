@@ -48,18 +48,35 @@ def message(item):
 def fetch_issue(repository, number):
     try:
         issue = gh(f"repos/{repository}/issues/{number}")
-    except subprocess.CalledProcessError:
-        return None
+    except subprocess.CalledProcessError as error:
+        if "HTTP 404" in (error.stderr or ""):
+            return None
+        print(f"Failed to fetch {repository}#{number}: {error.stderr}", file=sys.stderr)
+        return {
+            "repository": repository,
+            "number": number,
+            "error": "Issue context unavailable.",
+        }
     if "pull_request" in issue:
         return None
-    pages = gh("--paginate", "--slurp", f"repos/{repository}/issues/{number}/comments")
-    return {
+    result = {
         "repository": repository,
         "number": number,
         "title": issue["title"],
         **message(issue),
-        "comments": [message(comment) for page in pages for comment in page],
     }
+    try:
+        pages = gh(
+            "--paginate", "--slurp", f"repos/{repository}/issues/{number}/comments"
+        )
+        result["comments"] = [message(comment) for page in pages for comment in page]
+    except subprocess.CalledProcessError as error:
+        print(
+            f"Failed to fetch comments for {repository}#{number}: {error.stderr}",
+            file=sys.stderr,
+        )
+        result["comments_error"] = "Issue discussion unavailable."
+    return result
 
 
 def main():

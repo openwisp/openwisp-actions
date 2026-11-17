@@ -30,7 +30,7 @@ def message(item):
 
 def build(comments, reviews, review_comments, threads):
     states = {
-        thread["comments"]["nodes"][0]["databaseId"]: thread
+        thread["comments"]["nodes"][0]["fullDatabaseId"]: thread
         for thread in threads
         if thread["comments"]["nodes"]
     }
@@ -46,8 +46,8 @@ def build(comments, reviews, review_comments, threads):
         ],
         "threads": [
             {
-                "resolved": states.get(root, {}).get("isResolved"),
-                "outdated": states.get(root, {}).get("isOutdated"),
+                "resolved": states.get(str(root), {}).get("isResolved"),
+                "outdated": states.get(str(root), {}).get("isOutdated"),
                 "path": replies[0]["path"],
                 "line": replies[0]["line"],
                 "comments": [message(reply) for reply in replies],

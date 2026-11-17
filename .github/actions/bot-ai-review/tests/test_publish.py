@@ -23,15 +23,18 @@ REVIEWS = [
         "state": "COMMENTED",
     },
 ]
-FAKE_GH = f"""#!/usr/bin/env bash
+FAKE_GH = """#!/usr/bin/env bash
 echo "gh $*" >>"$STATE/log"
 case "$*" in
-  *"--jq .head.sha"*) echo {HEAD_SHA} ;;
+  *"--jq .head.sha"*) echo "$REMOTE_HEAD" ;;
   "api --paginate "*) cat "$STATE/reviews.json" ;;
   "api -X POST "*) cat >"$STATE/review.json" ;;
 esac
 """
-FAKE_TOOL = '#!/usr/bin/env bash\necho "$(basename "$0") $*" >>"$STATE/log"\n'
+FAKE_TOOL = """#!/usr/bin/env bash
+echo "$(basename "$0") $*" >>"$STATE/log"
+if [ "$(basename "$0") $1" = "crit push" ] && [ "${FAIL_PUSH:-}" = 1 ]; then exit 1; fi
+"""
 FAILED = {
     "event": "comment",
     "verdict": "Review not completed",
@@ -46,7 +49,7 @@ CHANGES = {"event": "request-changes", "verdict": "Needs changes", "summary": "-
 COMMENT = {"file": "a.py", "line": 1, "body": "x"}
 
 
-def publish(findings, comments=(COMMENT,)):
+def publish(findings, comments=(COMMENT,), remote_head=HEAD_SHA, fail_push=False):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
             path = os.path.join(state, name)
@@ -66,10 +69,12 @@ def publish(findings, comments=(COMMENT,)):
             "REPOSITORY": "openwisp/repo",
             "PR_NUMBER": "1",
             "HEAD_SHA": HEAD_SHA,
+            "REMOTE_HEAD": remote_head,
+            "FAIL_PUSH": str(int(fail_push)),
             "STAGE": "review",
             "MODEL": "provider/model",
         }
-        subprocess.run([SCRIPT], env=env, check=True, capture_output=True)
+        result = subprocess.run([SCRIPT], env=env, capture_output=True)
         with open(os.path.join(state, "log")) as f:
             log = f.read().splitlines()
         review = os.path.join(state, "review.json")
@@ -78,6 +83,9 @@ def publish(findings, comments=(COMMENT,)):
                 review = json.load(f)
         else:
             review = None
+        if remote_head != HEAD_SHA or fail_push:
+            return result.returncode, log
+        assert result.returncode == 0, result.stderr
         return log, review
 
 
@@ -86,6 +94,18 @@ def dismissals(log):
 
 
 class TestPublish(unittest.TestCase):
+    def test_changed_head_stops_publication_and_dismissal(self):
+        status, log = publish(CHANGES, remote_head="b" * 40)
+        self.assertNotEqual(status, 0)
+        self.assertFalse(any(line.startswith("crit") for line in log))
+        self.assertEqual(dismissals(log), [])
+
+    def test_failed_publication_does_not_dismiss_reviews(self):
+        status, log = publish(CHANGES, fail_push=True)
+        self.assertNotEqual(status, 0)
+        self.assertTrue(any(line.startswith("crit push") for line in log))
+        self.assertEqual(dismissals(log), [])
+
     def test_keeps_change_requests_without_a_conclusion(self):
         for findings in (FAILED, INCONCLUSIVE):
             with self.subTest(verdict=findings["verdict"]):

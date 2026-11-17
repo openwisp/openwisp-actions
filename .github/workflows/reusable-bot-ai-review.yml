@@ -30,7 +30,8 @@ jobs:
       head_sha: ${{ steps.pr.outputs.head_sha }}
       base_sha: ${{ steps.pr.outputs.base_sha }}
     steps:
-      - name: Checkout reusable workflow
+      - &trusted_checkout
+        name: Checkout reusable workflow
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -152,13 +153,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Checkout reusable workflow
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: trusted_scripts
-          persist-credentials: false
+      - *trusted_checkout
 
       - name: Fetch pull request as data
         env:
@@ -226,13 +221,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout reusable workflow
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: trusted_scripts
-          persist-credentials: false
+      - *trusted_checkout
 
       - name: Download findings
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -270,13 +259,7 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
-      - name: Checkout reusable workflow
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: trusted_scripts
-          persist-credentials: false
+      - *trusted_checkout
 
       - name: Generate write app token
         id: app-token

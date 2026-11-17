@@ -49,6 +49,7 @@ class TestMain(unittest.TestCase):
         self.write("docs/AGENTS.md", "Docs rules.\n")
         self.write("src/AGENTS.md", "Source rules.\n")
         self.write("docs/index.rst", "Index\n")
+        self.write("src/service.py", "service\n")
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "base")
         self.base = self.git("rev-parse", "HEAD")
@@ -75,3 +76,12 @@ class TestMain(unittest.TestCase):
             f"## AGENTS.md\n\nRoot rules. {INJECTION}\n\n"
             "## docs/AGENTS.md\n\nDocs rules.\n\n",
         )
+
+    def test_includes_source_and_destination_guidance_for_moves(self):
+        self.git("mv", "src/service.py", "docs/service.py")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "move")
+        self.head = self.git("rev-parse", "HEAD")
+        output = self.run_script()
+        self.assertIn("Docs rules.", output)
+        self.assertIn("Source rules.", output)

@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 SCRIPTS = os.path.join(
@@ -50,6 +50,33 @@ class TestReferences(unittest.TestCase):
 
 
 class TestMain(unittest.TestCase):
+    def test_issue_lookup_failure_is_visible_to_reviewer(self):
+        api = f"repos/{REPOSITORY}"
+        error = subprocess.CalledProcessError(1, "gh", stderr="HTTP 503")
+        with redirect_stderr(io.StringIO()) as stderr:
+            result = self.run_main(
+                {
+                    f"{api}/pulls/1": {"title": "Fix", "body": "#2"},
+                    f"{api}/issues/2": error,
+                }
+            )
+        self.assertIn("unavailable", result["issues"][0]["error"])
+        self.assertIn("HTTP 503", stderr.getvalue())
+
+    def test_issue_comment_failure_preserves_issue(self):
+        api = f"repos/{REPOSITORY}"
+        error = subprocess.CalledProcessError(1, "gh", stderr="HTTP 503")
+        with redirect_stderr(io.StringIO()):
+            result = self.run_main(
+                {
+                    f"{api}/pulls/1": {"title": "Fix", "body": "#2"},
+                    f"{api}/issues/2": {"title": "Bug"},
+                    f"{api}/issues/2/comments": error,
+                }
+            )
+        self.assertEqual(result["issues"][0]["title"], "Bug")
+        self.assertIn("unavailable", result["issues"][0]["comments_error"])
+
     def run_main(self, responses):
         def gh(*args):
             response = responses[args[-1]]
@@ -86,7 +113,9 @@ class TestMain(unittest.TestCase):
                     [{"body": "Later", "user": None}],
                 ],
                 f"{api}/issues/3": {"title": "PR", "pull_request": {}},
-                f"{api}/issues/4": subprocess.CalledProcessError(1, "gh"),
+                f"{api}/issues/4": subprocess.CalledProcessError(
+                    1, "gh", stderr="HTTP 404"
+                ),
                 f"{api}/issues/5": {"title": "Empty", "body": None, "user": None},
                 f"{api}/issues/5/comments": [[]],
             }

@@ -7,7 +7,7 @@ query ($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
           isOutdated
           comments(first: 1) {
             nodes {
-              databaseId
+              fullDatabaseId
             }
           }
         }

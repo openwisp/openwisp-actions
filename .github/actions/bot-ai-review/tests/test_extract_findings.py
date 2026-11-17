@@ -215,6 +215,14 @@ class TestValidate(unittest.TestCase):
 
 
 class TestParseDiff(unittest.TestCase):
+    def test_added_header_like_content_remains_in_hunk(self):
+        diff = '--- a/app.py\n+++ b/app.py\n@@ -0,0 +1,2 @@\n+++ "x\n+next\n'
+        self.assertEqual(parse_diff(diff), ({"app.py": {1, 2}}, ("app.py", 1)))
+
+    def test_malformed_quoted_path_is_ignored(self):
+        diff = '--- /dev/null\n+++ "b/unterminated\n@@ -0,0 +1 @@\n+x\n'
+        self.assertEqual(parse_diff(diff), ({}, None))
+
     def test_returns_new_side_lines_and_first_added_line(self):
         self.assertEqual(parse_diff(DIFF), (LINES, ("app.py", 2)))
 
@@ -262,6 +270,11 @@ class TestParseDiff(unittest.TestCase):
                     script,
                     shell=True,
                     cwd=repo,
+                    env={
+                        **os.environ,
+                        "GIT_CONFIG_GLOBAL": os.devnull,
+                        "GIT_CONFIG_NOSYSTEM": "1",
+                    },
                     check=True,
                     capture_output=True,
                     text=True,

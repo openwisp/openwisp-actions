@@ -85,4 +85,6 @@ if jq -e '.verdict == "Review not completed"' "$RUNNER_TEMP/findings.json" >/dev
   echo "::$STOP::"
   echo "::endgroup::"
 fi
+echo "::stop-commands::$STOP"
 cat "$RUNNER_TEMP/findings.json"
+echo "::$STOP::"

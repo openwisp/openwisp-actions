@@ -43,7 +43,7 @@ MAX_SUMMARY = 4000
 MAX_TITLE = 100
 MAX_LEFTOVER_BODY = 500
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 HEADING = re.compile(r"\n+(?=#)")
 ANCHOR_BODY = "See the review summary."
 FALLBACK = {
@@ -169,7 +169,10 @@ def perimeter(data):
 
 def unquote(name):
     if name.startswith('"'):
-        return ast.literal_eval("b" + name).decode("utf-8", "replace")
+        try:
+            return ast.literal_eval("b" + name).decode("utf-8", "replace")
+        except (SyntaxError, ValueError):
+            return None
     return name
 
 
@@ -179,23 +182,32 @@ def parse_diff(diff):
     unchanged = []
     path = None
     line = 0
+    old_remaining = new_remaining = 0
     for row in diff.splitlines():
         if row.startswith("diff --git "):
             path = None
+            old_remaining = new_remaining = 0
             continue
-        if row.startswith("+++ "):
+        if not old_remaining and not new_remaining and row.startswith("+++ "):
             name = unquote(row[4:].rstrip("\t"))
-            path = name[2:] if name.startswith("b/") else None
+            path = name[2:] if name and name.startswith("b/") else None
             continue
         match = HUNK.match(row)
         if match:
-            line = int(match.group(1))
+            old_remaining = int(match.group(1) or "1")
+            line = int(match.group(2))
+            new_remaining = int(match.group(3) or "1")
             continue
-        if path is None or row.startswith(("-", "\\")):
+        if not old_remaining and not new_remaining:
             continue
-        lines.setdefault(path, set()).add(line)
-        (added if row.startswith("+") else unchanged).append((path, line))
-        line += 1
+        if row.startswith((" ", "-")):
+            old_remaining -= 1
+        if row.startswith((" ", "+")):
+            new_remaining -= 1
+            if path is not None:
+                lines.setdefault(path, set()).add(line)
+                (added if row.startswith("+") else unchanged).append((path, line))
+            line += 1
     anchor = (added or unchanged or [None])[0]
     return lines, anchor
 

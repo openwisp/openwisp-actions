@@ -27,7 +27,7 @@ def applicable(paths):
 def main():
     base, head = sys.argv[1:3]
     diff = subprocess.run(
-        ["git", "diff", "--name-only", "-z", f"{base}...{head}"],
+        ["git", "diff", "--no-renames", "--name-only", "-z", f"{base}...{head}"],
         capture_output=True,
         text=True,
         check=True,

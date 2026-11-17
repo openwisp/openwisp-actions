@@ -817,6 +817,87 @@ activates ``workflow_run`` listeners that exist on the default branch:
 adding the runner only to a feature branch will cause it to silently do
 nothing.
 
+On-Demand AI Review
+~~~~~~~~~~~~~~~~~~~
+
+This reusable workflow lets OpenWISP organization members request an AI
+review by commenting on a pull request:
+
+1. ``/review``: checks whether the pull request is worth the effort (root
+   cause or workaround, approach, ``AGENTS.md`` rules, performance and
+   race conditions). When an important design choice depends on missing
+   context or maintainer priorities, it explains the options and asks for
+   a maintainer decision. Using the `OpenWISP Threat Model
+   <https://github.com/openwisp/openwisp-docs/blob/master/security/threat-model.rst>`_,
+   it also states whether the change affects the security perimeter and
+   recommends ``/security-review`` or ``/final-review`` next.
+2. ``/security-review``: looks for actionable security issues.
+3. ``/final-review``: checks whether earlier findings were addressed and
+   looks for new critical issues, including significant violations of
+   base-branch ``AGENTS.md`` rules. Approval requires the summary to state
+   that no findings are outstanding or unclear.
+
+Before running any command, every review checks the pull request for
+prompt injection and attempts to steal secrets, and if it finds one it
+stops and requests changes with the evidence.
+
+The OpenWISP bot publishes the review with a verdict, a summary and inline
+comments labeled ``P1`` to ``P3``. A ``Maintainer decision needed``
+verdict is posted as a comment and keeps earlier change requests of the
+same stage. Conclusive reviews dismiss earlier change requests of the same
+stage. To verify its findings, the model can search the web, fetch pages,
+edit a temporary copy of the pull request and run allowed commands, such
+as tests. Commands run as a separate user that cannot read the model
+credentials, and the model has no access to the workflow's GitHub tokens.
+Pull request content, tool output and fetched pages are treated as
+untrusted data. Each review also reads the pull request title, description
+and discussion, and the OpenWISP issues linked in the description, as
+data. The writing and review rules shared by OpenWISP AI tools are read by
+the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
+<https://github.com/openwisp/openwisp-opencode-configs>`_; if a section is
+missing, the review notes it in its summary.
+
+**Model configuration**
+
+The provider and models come from these Actions variables:
+
+- ``OPENCODE_PROVIDER``: the provider, e.g. ``github-copilot``.
+- ``AI_REVIEW1_GENERAL_MODEL``: the model for ``/review``.
+- ``AI_REVIEW2_SECURITY_MODEL``: the model for ``/security-review``.
+- ``AI_REVIEW3_FINAL_MODEL``: the model for ``/final-review``.
+
+Set them as organization variables to apply to all repositories. A
+repository variable with the same name overrides the organization one,
+e.g. to use a stronger security model in a critical repository. If the
+provider or the model of a review is unset, the review fails with an error
+and the comment gets a confused reaction. With ``github-copilot``, pass
+the Copilot token as the ``OPENCODE_AUTH`` secret. Each review states the
+provider and model it used.
+
+**Usage Example**
+
+.. code-block:: yaml
+
+    name: AI Review
+
+    on:
+      issue_comment:
+        types: [created]
+
+    permissions: {}
+
+    jobs:
+      ai-review:
+        permissions:
+          contents: read
+          issues: read
+          pull-requests: read
+        uses: openwisp/openwisp-actions/.github/workflows/reusable-bot-ai-review.yml@master
+        secrets:
+          APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
+          OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH }}
+
 Development
 ===========
 

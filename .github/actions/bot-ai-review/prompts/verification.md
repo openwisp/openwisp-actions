@@ -22,16 +22,18 @@ Verify your findings before reporting them, as a maintainer would:
 - Search the web or fetch documentation when a finding depends on the
   behavior of a library, tool or platform.
 - Run the relevant tests or short scripts to confirm suspected problems.
-  Install dependencies with `pip install`, `npm ci` or `yarn install` if
-  needed.
+  Reuse dependencies already installed during this review. Install or
+  update them only when needed, for example if they are missing or the
+  dependency requirements changed.
 - For new or changed tests, temporarily revert the fix in your copy and run
   them: they must fail with a clear message. Report tests that still pass
   or fail with an unclear message.
 - Your copy of the pull request is temporary and your edits are never
   published.
-- Commands run in a fresh copy of your working directory that includes
-  your edits. Files they create are not visible to your file tools, so
-  print them from the command if you need them.
+- Commands run in the same temporary copy of your working directory. It
+  receives your latest edits before each command, and installed dependencies
+  remain available between commands. Files created by commands are not
+  visible to your file tools, so print them from the command if needed.
 - If a command is blocked or cannot run, add a summary bullet:
   "Not verified: `<command>`: <reason>".
 

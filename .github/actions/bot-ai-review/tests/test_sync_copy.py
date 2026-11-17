@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -103,6 +104,36 @@ class TestSyncCopy(unittest.TestCase):
         self.sync()
         self.assertEqual(self.read("node_modules/lib/index.js"), "dependency")
         self.assertEqual(self.read("app/__pycache__/feature.pyc"), "cache")
+
+    def test_reuses_python_environment_after_source_update(self):
+        venv = os.path.join(self.dst, ".venv")
+        python = os.path.join(venv, "bin", "python")
+        subprocess.run(
+            [sys.executable, "-m", "venv", "--without-pip", venv],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            [
+                python,
+                "-c",
+                "import sysconfig; from pathlib import Path; "
+                "Path(sysconfig.get_path('purelib'), 'test_dependency.py')"
+                ".write_text('VALUE = 42')",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        self.write(self.src, "app/feature.py", "updated")
+        self.sync()
+        result = subprocess.run(
+            [python, "-c", "import test_dependency; print(test_dependency.VALUE)"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.stdout.strip(), "42")
+        self.assertEqual(self.read("app/feature.py"), "updated")
 
     def test_parallel_syncs_all_succeed(self):
         os.remove(os.path.join(self.src, "app/feature.py"))

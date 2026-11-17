@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -56,7 +57,9 @@ DECISION = {
 COMMENT = {"file": "a.py", "line": 1, "body": "x"}
 
 
-def publish(findings, comments=(COMMENT,), remote_head=HEAD_SHA, fail_push=False):
+def publish(
+    findings, comments=(COMMENT,), remote_head=HEAD_SHA, fail_push=False, stage="review"
+):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
             path = os.path.join(state, name)
@@ -64,7 +67,14 @@ def publish(findings, comments=(COMMENT,), remote_head=HEAD_SHA, fail_push=False
                 f.write(content)
             os.chmod(path, 0o755)
         with open(os.path.join(state, "reviews.json"), "w") as f:
-            json.dump(REVIEWS, f)
+            reviews = [
+                {
+                    **review,
+                    "body": review["body"].replace("AI review of ", f"AI {stage} of "),
+                }
+                for review in REVIEWS
+            ]
+            json.dump(reviews, f)
         path = os.path.join(state, "findings.json")
         with open(path, "w") as f:
             json.dump({**findings, "comments": list(comments)}, f)
@@ -78,7 +88,7 @@ def publish(findings, comments=(COMMENT,), remote_head=HEAD_SHA, fail_push=False
             "HEAD_SHA": HEAD_SHA,
             "REMOTE_HEAD": remote_head,
             "FAIL_PUSH": str(int(fail_push)),
-            "STAGE": "review",
+            "STAGE": stage,
             "MODEL": "provider/model",
         }
         result = subprocess.run([SCRIPT], env=env, capture_output=True)
@@ -146,6 +156,44 @@ class TestPublish(unittest.TestCase):
                 self.assertNotIn("comments", review)
                 self.assertIn(f"**Verdict: {findings['verdict']}**", review["body"])
                 self.assertTrue(review["body"].endswith(findings["summary"]))
+
+    def test_inconsistent_positive_reviews_keep_earlier_change_requests(self):
+        for stage, verdict in (
+            ("review", "Looks good"),
+            ("security-review", "No issues found"),
+        ):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as directory:
+                output = os.path.join(directory, "output.json")
+                diff = os.path.join(directory, "pr.diff")
+                with open(output, "w") as f:
+                    json.dump(
+                        {
+                            "verdict": verdict,
+                            "title": "T",
+                            "summary": "S",
+                            "security_perimeter": "NO",
+                            "comments": [{**COMMENT, "severity": "P1", "title": "Bug"}],
+                        },
+                        f,
+                    )
+                with open(diff, "w") as f:
+                    f.write("--- /dev/null\n+++ b/a.py\n@@ -0,0 +1 @@\n+x\n")
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        os.path.join(SCRIPTS, "extract_findings.py"),
+                        output,
+                        diff,
+                        stage,
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                findings = json.loads(result.stdout)
+                self.assertEqual(findings["verdict"], "Review not completed")
+                log, _ = publish(findings, comments=findings["comments"], stage=stage)
+                self.assertEqual(dismissals(log), [])
 
 
 if __name__ == "__main__":

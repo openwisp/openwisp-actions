@@ -570,6 +570,45 @@ class TestMain(unittest.TestCase):
         self.assertEqual(result["verdict"], "Review not completed")
         self.assertEqual(result["event"], "comment")
 
+    def test_other_reviews_cannot_clear_serious_findings(self):
+        for stage, verdict in (
+            ("review", "Looks good"),
+            ("security-review", "No issues found"),
+        ):
+            for severity in ("P1", "P2"):
+                for path in ("app.py", "other.py"):
+                    with self.subTest(stage=stage, severity=severity, path=path):
+                        output = json.dumps(
+                            {
+                                "verdict": verdict,
+                                "title": "T",
+                                "summary": "S",
+                                "security_perimeter": "NO",
+                                "comments": [comment(severity=severity, file=path)],
+                            }
+                        )
+                        result = self.run_main(output, stage=stage)
+                        self.assertEqual(result["verdict"], "Review not completed")
+                        self.assertEqual(result["event"], "comment")
+
+    def test_other_reviews_can_report_p3_findings(self):
+        for stage, verdict in (
+            ("review", "Looks good"),
+            ("security-review", "No issues found"),
+        ):
+            with self.subTest(stage=stage):
+                output = json.dumps(
+                    {
+                        "verdict": verdict,
+                        "title": "T",
+                        "summary": "S",
+                        "security_perimeter": "NO",
+                        "comments": [comment(severity="P3")],
+                    }
+                )
+                result = self.run_main(output, stage=stage)
+                self.assertEqual(result["verdict"], verdict)
+
 
 if __name__ == "__main__":
     unittest.main()

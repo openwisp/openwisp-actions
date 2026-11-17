@@ -54,6 +54,11 @@ if [ -f "$AUTH" ]; then
   fi
 fi
 
+if [ "$STATUS" -ne 0 ]; then
+  echo "::error::The model run did not complete (exit status: $STATUS)"
+  exit 1
+fi
+
 STOP=$(openssl rand -hex 16)
 echo "::stop-commands::$STOP"
 jq -r 'select(.type == "error") | "Error: \(.error.data.message // .error.name)"' "$EVENTS" || true

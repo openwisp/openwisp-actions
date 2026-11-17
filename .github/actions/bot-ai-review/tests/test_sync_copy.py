@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -53,6 +54,45 @@ class TestSyncCopy(unittest.TestCase):
         self.write(self.src, "app/feature.py", "reverted")
         self.sync()
         self.assertEqual(self.read("app/feature.py"), "reverted")
+
+    def test_transfers_same_size_changes_with_same_timestamp(self):
+        source = os.path.join(self.src, "app/feature.py")
+        timestamp = os.stat(source).st_mtime_ns
+        self.write(self.src, "app/feature.py", "other")
+        os.utime(source, ns=(timestamp, timestamp))
+        self.sync()
+        self.assertEqual(self.read("app/feature.py"), "other")
+
+    def test_replaces_directory_with_file_and_keeps_unrelated_cache(self):
+        self.write(self.dst, "app/__pycache__/feature.pyc", "cache")
+        self.write(self.dst, "other/cache", "keep")
+        shutil.rmtree(os.path.join(self.src, "app"))
+        self.write(self.src, "app", "replacement")
+        self.sync()
+        self.assertEqual(self.read("app"), "replacement")
+        self.assertEqual(self.read("other/cache"), "keep")
+
+    def test_retry_after_rsync_failure_preserves_manifest_and_cache(self):
+        with open(self.list, "rb") as f:
+            manifest = f.read()
+        self.write(self.dst, "cache/data", "keep")
+        os.remove(os.path.join(self.src, "app/old.py"))
+        self.write(self.src, "app/new.py", "new")
+        with tempfile.TemporaryDirectory() as binary:
+            fake = os.path.join(binary, "rsync")
+            with open(fake, "w") as f:
+                f.write("#!/bin/sh\nexit 1\n")
+            os.chmod(fake, 0o755)
+            env = {**os.environ, "PATH": f"{binary}:{os.environ['PATH']}"}
+            result = subprocess.run(
+                [SCRIPT, self.src, self.dst, self.list], env=env, capture_output=True
+            )
+        self.assertNotEqual(result.returncode, 0)
+        with open(self.list, "rb") as f:
+            self.assertEqual(f.read(), manifest)
+        self.sync()
+        self.assertEqual(self.read("app/new.py"), "new")
+        self.assertEqual(self.read("cache/data"), "keep")
 
     def test_keeps_files_created_by_commands(self):
         self.write(self.dst, "node_modules/lib/index.js", "dependency")

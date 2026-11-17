@@ -12,5 +12,5 @@ NEW=$(mktemp "$LIST.XXXXXX")
 if [ -f "$LIST" ]; then
   comm -z -23 "$LIST" "$NEW" | (cd "$DST" && xargs -0 -r rm -f --)
 fi
-rsync -a "$SRC/" "$DST/"
+rsync -a --checksum --force "$SRC/" "$DST/"
 mv "$NEW" "$LIST"

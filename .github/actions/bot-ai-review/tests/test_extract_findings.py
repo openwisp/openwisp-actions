@@ -215,6 +215,10 @@ class TestValidate(unittest.TestCase):
 
 
 class TestParseDiff(unittest.TestCase):
+    def test_does_not_split_diff_rows_on_vertical_tab(self):
+        diff = "--- /dev/null\n+++ b/app.txt\n@@ -0,0 +1,2 @@\n+prefix\v@@ -0,0 +100 @@\n+last\n"
+        self.assertEqual(parse_diff(diff), ({"app.txt": {1, 2}}, ("app.txt", 1)))
+
     def test_added_header_like_content_remains_in_hunk(self):
         diff = '--- a/app.py\n+++ b/app.py\n@@ -0,0 +1,2 @@\n+++ "x\n+next\n'
         self.assertEqual(parse_diff(diff), ({"app.py": {1, 2}}, ("app.py", 1)))

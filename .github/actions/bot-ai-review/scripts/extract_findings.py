@@ -183,7 +183,7 @@ def parse_diff(diff):
     path = None
     line = 0
     old_remaining = new_remaining = 0
-    for row in diff.splitlines():
+    for row in diff.split("\n"):
         if row.startswith("diff --git "):
             path = None
             old_remaining = new_remaining = 0
@@ -215,7 +215,7 @@ def parse_diff(diff):
 def main():
     with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
         text = ANSI.sub("", f.read())
-    with open(sys.argv[2], encoding="utf-8", errors="replace") as f:
+    with open(sys.argv[2], encoding="utf-8", errors="replace", newline="") as f:
         lines, anchor = parse_diff(f.read())
     stage = sys.argv[3]
     data = find_json(text)

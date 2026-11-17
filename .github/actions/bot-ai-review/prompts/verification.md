@@ -37,8 +37,18 @@ Verify your findings before reporting them, as a maintainer would:
 - If a command is blocked or cannot run, add a summary bullet:
   "Not verified: `<command>`: <reason>".
 
+For each substantial finding, explain in plain language who does what,
+what goes wrong, and why it matters. For timing problems, show the steps
+in order. State the outcome needed to fix it and prefer a small, practical
+solution. When helpful, include a concise, syntax-highlighted code example
+or a regression test that demonstrates the bug. Say whether the example
+or test was run; do not present an untested suggestion as verified. Avoid
+unnecessary examples for simple points and do not speculate about impact.
+
 Before replying, compare each line comment with the earlier reviews in
-history.json. If it repeats a finding whose thread is still open, remove
-the line comment and list the finding as still open in the summary.
+history.json. Check human and bot feedback against the current code rather
+than assuming it is correct. If a line comment repeats a finding whose
+thread is still open, remove the line comment and list the finding as
+still open in the summary.
 
 Then reply with the JSON described above.

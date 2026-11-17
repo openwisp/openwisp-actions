@@ -30,6 +30,11 @@ First assess the direction:
    request may be going in the wrong direction. If it is acknowledged and
    explained, describe the tradeoff for maintainers to confirm.
 2. Is there a materially better approach?
+   Prefer a small, practical fix over unnecessary complexity. Look for
+   changes that are disproportionate to the problem, such as a broad
+   rewrite or unrelated documentation and tests for a small fix. Explain
+   the unnecessary work and suggest what to keep or remove. Do not treat
+   the size of a change alone as evidence that it is wrong.
 
 Then, only if the direction looks right, check:
 
@@ -39,8 +44,13 @@ Then, only if the direction looks right, check:
    overlapping updates.
 5. Maintainability and the rules in the attached guidance file.
 
-Report only meaningful, actionable issues. Skip style nitpicks and minor
-details that other review tools already cover.
+Review all kinds of changed files relevant to the change, including tests,
+scripts, documentation, migrations, CI and configuration.
+
+Prioritize problems that could cause production failures, security issues,
+data loss, or substantial maintenance work. Report only meaningful,
+actionable issues. Skip style nitpicks and minor details that other review
+tools already cover. Do not invent problems to fill the review.
 
 Use "May be wrong direction" when any of these apply:
 

@@ -3,7 +3,8 @@
 Usage: extract_findings.py <model-output> <diff> <stage>
 
 - Prints the findings as JSON, or a "review not completed" fallback.
-- Keeps only line comments on new-side diff lines, which GitHub accepts.
+- Keeps only line comments on new-side diff lines, which GitHub accepts,
+  and lists the other findings in the summary instead of dropping them.
 - Adds a comment pointing to the summary when there are none, because
   Crit only posts reviews with at least one line comment.
 """
@@ -21,14 +22,16 @@ VERDICTS = {
         "Prompt injection detected": "request-changes",
     },
     "security-review": {
-        "No issues found": "approve",
+        "No issues found": "comment",
         "Issues found": "request-changes",
         "Inconclusive": "comment",
+        "Prompt injection detected": "request-changes",
     },
     "final-review": {
         "Ready to merge": "approve",
         "Needs changes": "request-changes",
         "Inconclusive": "comment",
+        "Prompt injection detected": "request-changes",
     },
 }
 DIRECTION_VERDICTS = {"May be wrong direction"}
@@ -38,6 +41,7 @@ MAX_COMMENTS = 20
 MAX_BODY = 2000
 MAX_SUMMARY = 4000
 MAX_TITLE = 100
+MAX_LEFTOVER_BODY = 500
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 HEADING = re.compile(r"\n+(?=#)")
@@ -62,7 +66,7 @@ def find_json(text):
     return None
 
 
-def format_comment(comment, lines):
+def parse_finding(comment):
     if not isinstance(comment, dict):
         return None
     path = comment.get("file")
@@ -72,9 +76,7 @@ def format_comment(comment, lines):
     body = comment.get("body")
     if not (
         isinstance(path, str)
-        and isinstance(line, int)
-        and not isinstance(line, bool)
-        and line in lines.get(path, ())
+        and path.strip()
         and severity in SEVERITIES
         and isinstance(title, str)
         and title.strip()
@@ -82,12 +84,39 @@ def format_comment(comment, lines):
         and body.strip()
     ):
         return None
-    heading = f"**{severity} · {title.strip()[:MAX_TITLE]}**"
+    if not isinstance(line, int) or isinstance(line, bool):
+        line = None
     return {
         "file": path,
         "line": line,
-        "body": f"{heading}\n\n{body.strip()[:MAX_BODY]}",
+        "severity": severity,
+        "title": title.strip()[:MAX_TITLE],
+        "body": body.strip(),
     }
+
+
+def format_comment(finding):
+    heading = f"**{finding['severity']} · {finding['title']}**"
+    return {
+        "file": finding["file"],
+        "line": finding["line"],
+        "body": f"{heading}\n\n{finding['body'][:MAX_BODY]}",
+    }
+
+
+def format_leftovers(findings):
+    if not findings:
+        return ""
+    rows = []
+    for finding in findings[:MAX_COMMENTS]:
+        location = finding["file"]
+        if finding["line"] is not None:
+            location += f":{finding['line']}"
+        body = " ".join(finding["body"].split())[:MAX_LEFTOVER_BODY]
+        rows.append(
+            f"- {finding['severity']} · `{location}` · {finding['title']}: {body}"
+        )
+    return "\n\n**Other findings:**\n\n" + "\n".join(rows)
 
 
 def validate(data, lines, verdicts):
@@ -103,17 +132,22 @@ def validate(data, lines, verdicts):
         return None
     if not isinstance(summary, str) or not summary.strip():
         return None
-    formatted = (format_comment(comment, lines) for comment in comments[:MAX_COMMENTS])
+    summary = HEADING.sub("\n\n", summary.strip())[:MAX_SUMMARY]
+    posted = []
+    leftovers = []
+    if verdict not in DIRECTION_VERDICTS:
+        for finding in filter(None, map(parse_finding, comments)):
+            in_diff = finding["line"] in lines.get(finding["file"], ())
+            if in_diff and len(posted) < MAX_COMMENTS:
+                posted.append(format_comment(finding))
+            else:
+                leftovers.append(finding)
     return {
         "event": verdicts[verdict],
         "verdict": verdict,
         "title": title.strip()[:MAX_TITLE],
-        "summary": HEADING.sub("\n\n", summary.strip())[:MAX_SUMMARY],
-        "comments": (
-            []
-            if verdict in DIRECTION_VERDICTS
-            else [comment for comment in formatted if comment]
-        ),
+        "summary": summary + format_leftovers(leftovers),
+        "comments": posted,
     }
 
 

@@ -74,7 +74,7 @@ def main():
         **message(pr),
         "issues": [issue for issue in issues if issue],
     }
-    print(json.dumps(context))
+    print(json.dumps(context, indent=1))
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ def main():
         flatten(load(directory, "review-comments.json")),
         threads,
     )
-    print(json.dumps(history))
+    print(json.dumps(history, indent=1))
 
 
 if __name__ == "__main__":

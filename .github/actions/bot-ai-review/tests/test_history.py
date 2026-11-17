@@ -54,7 +54,10 @@ class TestHistory(unittest.TestCase):
             with patch.object(sys, "argv", ["history.py", directory]):
                 with redirect_stdout(stdout):
                     main()
-        return json.loads(stdout.getvalue())
+        output = stdout.getvalue()
+        self.assertGreater(len(output.splitlines()), 1)
+        self.assertLess(max(map(len, output.splitlines())), 2000)
+        return json.loads(output)
 
     def files(self, review_comments, threads):
         return {

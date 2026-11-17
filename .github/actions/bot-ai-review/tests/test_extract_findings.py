@@ -65,7 +65,7 @@ class TestValidate(unittest.TestCase):
         cases = [
             ("review", "Looks good", "comment"),
             ("review", "May be wrong direction", "request-changes"),
-            ("security-review", "No issues found", "approve"),
+            ("security-review", "No issues found", "comment"),
             ("security-review", "Inconclusive", "comment"),
             ("final-review", "Ready to merge", "approve"),
             ("final-review", "Needs changes", "request-changes"),
@@ -153,6 +153,54 @@ class TestValidate(unittest.TestCase):
         }
         result = validate(data, LINES, VERDICTS["review"])
         self.assertEqual(result["comments"], [])
+
+    def test_invalid_comments_do_not_use_up_the_limit(self):
+        comments = ["not a dict"] * MAX_COMMENTS + [comment(title="Kept")]
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": comments,
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertEqual(len(result["comments"]), 1)
+        self.assertIn("Kept", result["comments"][0]["body"])
+
+    def test_lists_findings_outside_the_diff_in_the_summary(self):
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": [
+                comment(file="views.py", line=210, severity="P1", title="Bind it"),
+                comment(line=True, title="No line"),
+            ],
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertEqual(result["comments"], [])
+        self.assertEqual(
+            result["summary"],
+            "S\n\n**Other findings:**\n\n"
+            "- P1 · `views.py:210` · Bind it: Body\n"
+            "- P2 · `app.py` · No line: Body",
+        )
+
+    def test_lists_findings_over_the_limit_in_the_summary(self):
+        comments = [comment(title=f"T{n}") for n in range(MAX_COMMENTS + 2)]
+        data = {
+            "verdict": "Needs changes",
+            "title": "T",
+            "summary": "S",
+            "comments": comments,
+        }
+        result = validate(data, LINES, VERDICTS["review"])
+        self.assertEqual(len(result["comments"]), MAX_COMMENTS)
+        self.assertTrue(
+            result["summary"].endswith(
+                f"- P2 · `app.py:2` · T{MAX_COMMENTS}: Body\n"
+                f"- P2 · `app.py:2` · T{MAX_COMMENTS + 1}: Body"
+            )
+        )
 
     def test_limits_number_of_comments(self):
         comments = [comment() for _ in range(MAX_COMMENTS + 5)]
@@ -251,9 +299,9 @@ class TestMain(unittest.TestCase):
 
     def test_adds_anchor_when_there_are_no_comments(self):
         output = json.dumps(
-            {"verdict": "No issues found", "title": "T", "summary": "S", "comments": []}
+            {"verdict": "Ready to merge", "title": "T", "summary": "S", "comments": []}
         )
-        result = self.run_main(output, stage="security-review")
+        result = self.run_main(output, stage="final-review")
         self.assertEqual(result["event"], "approve")
         self.assertEqual(result["comments"][0]["body"], ANCHOR_BODY)
 
@@ -324,14 +372,21 @@ class TestMain(unittest.TestCase):
         self.assertEqual(len(result["comments"]), 1)
         self.assertNotEqual(result["comments"][0]["body"], ANCHOR_BODY)
 
-    def test_rejects_prompt_injection_verdict_in_other_stages(self):
+    def test_reports_prompt_injection_in_every_stage(self):
         output = json.dumps(
-            {"verdict": "Prompt injection detected", "title": "T", "summary": "S"}
+            {
+                "verdict": "Prompt injection detected",
+                "title": "T",
+                "summary": "S",
+                "comments": [comment()],
+            }
         )
         for stage in ("security-review", "final-review"):
             with self.subTest(stage=stage):
                 result = self.run_main(output, stage=stage)
-                self.assertEqual(result["verdict"], FALLBACK["verdict"])
+                self.assertEqual(result["verdict"], "Prompt injection detected")
+                self.assertEqual(result["event"], "request-changes")
+                self.assertEqual(len(result["comments"]), 1)
 
     def test_other_stages_do_not_need_a_perimeter_decision(self):
         for stage, verdict in (

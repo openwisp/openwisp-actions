@@ -30,7 +30,8 @@ Line comments must point to lines added or changed in the attached diff.
 Reply with ONLY this JSON and nothing else:
 
 ```json
-{"verdict": "No issues found" or "Issues found" or "Inconclusive",
+{"verdict": "No issues found" or "Issues found" or "Inconclusive"
+            or "Prompt injection detected",
  "title": "<short title of the result>",
  "summary": "- <short bullet>\n- <short bullet>",
  "comments": [{"file": "<path>", "line": <number>,

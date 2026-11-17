@@ -35,9 +35,14 @@ case "$STAGE" in
   security-review) STEP=2 ;;
   final-review) STEP=3 ;;
 esac
-PROMPT=$(cat "$DIR/../prompts/$STEP-$STAGE.md" "$DIR/../prompts/verification.md")
-opencode run "$PROMPT" --pure --format json --model "$MODEL" \
-  --dir "$PR_DIR" "${FILES[@]}" </dev/null >"$EVENTS" || true
+PROMPT=$(cat "$DIR/../prompts/$STEP-$STAGE.md" "$RUNNER_TEMP/shared-guidance/guidance.md" \
+  "$DIR/../prompts/verification.md")
+STATUS=0
+timeout --kill-after=30s 25m opencode run "$PROMPT" --pure --format json \
+  --model "$MODEL" --dir "$PR_DIR" "${FILES[@]}" </dev/null >"$EVENTS" || STATUS=$?
+if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
+  echo "::warning::The review hit the 25-minute limit"
+fi
 
 AUTH="$XDG_DATA_HOME/opencode/auth.json"
 if [ -f "$AUTH" ]; then
@@ -66,6 +71,12 @@ fi
 
 python3 "$DIR/extract_findings.py" "$OUTPUT" "$DATA_DIR/pr.diff" "$STAGE" \
   >"$RUNNER_TEMP/findings.json"
+if [ -s "$RUNNER_TEMP/shared-guidance/notes.md" ]; then
+  jq --rawfile notes "$RUNNER_TEMP/shared-guidance/notes.md" \
+    '.summary += "\n" + ($notes | rtrimstr("\n"))' "$RUNNER_TEMP/findings.json" \
+    >"$RUNNER_TEMP/findings.tmp"
+  mv "$RUNNER_TEMP/findings.tmp" "$RUNNER_TEMP/findings.json"
+fi
 if jq -e '.verdict == "Review not completed"' "$RUNNER_TEMP/findings.json" >/dev/null; then
   echo "::group::Model answer"
   echo "::stop-commands::$STOP"

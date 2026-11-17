@@ -828,13 +828,14 @@ review by commenting on a pull request:
    race conditions). Using the `OpenWISP Threat Model
    <https://github.com/openwisp/openwisp-docs/blob/master/security/threat-model.rst>`_,
    it also states whether the change affects the security perimeter and
-   recommends ``/security-review`` or ``/final-review`` next. Before
-   running any command, it checks the pull request for prompt injection
-   and attempts to steal secrets, and if it finds one it stops and
-   requests changes with the evidence.
+   recommends ``/security-review`` or ``/final-review`` next.
 2. ``/security-review``: looks for actionable security issues.
 3. ``/final-review``: checks whether earlier findings were addressed and
    looks for new critical issues.
+
+Before running any command, every review checks the pull request for
+prompt injection and attempts to steal secrets, and if it finds one it
+stops and requests changes with the evidence.
 
 The OpenWISP bot publishes the review with a verdict, a summary and inline
 comments labeled ``P1`` to ``P3``, and dismisses its earlier change
@@ -845,7 +846,11 @@ cannot read the model credentials, and the model has no access to the
 workflow's GitHub tokens. Pull request content, tool output and fetched
 pages are treated as untrusted data. Each review also reads the pull
 request title, description and discussion, and the OpenWISP issues linked
-in the description, as data.
+in the description, as data. The writing and review rules shared by
+OpenWISP AI tools are read by the OpenWISP bot from the ``AGENTS.md`` of
+`openwisp-opencode-configs
+<https://github.com/openwisp/openwisp-opencode-configs>`_; if a section is
+missing, the review notes it in its summary.
 
 **Model configuration**
 

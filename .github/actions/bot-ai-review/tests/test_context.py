@@ -62,7 +62,10 @@ class TestMain(unittest.TestCase):
             sys, "argv", ["context.py", REPOSITORY, "1"]
         ), redirect_stdout(stdout):
             main()
-        return json.loads(stdout.getvalue())
+        output = stdout.getvalue()
+        self.assertGreater(len(output.splitlines()), 1)
+        self.assertLess(max(map(len, output.splitlines())), 2000)
+        return json.loads(output)
 
     def test_builds_context_with_linked_issues(self):
         api = f"repos/{REPOSITORY}"

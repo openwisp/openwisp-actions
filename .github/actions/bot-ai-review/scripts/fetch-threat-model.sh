@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Fetch the OpenWISP threat model for the general review.
 set -euo pipefail
 
 mkdir -p "$DATA_DIR"

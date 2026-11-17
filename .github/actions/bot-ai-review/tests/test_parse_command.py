@@ -1,3 +1,5 @@
+"""Test review command and model selection."""
+
 import os
 import subprocess
 import tempfile

@@ -1,3 +1,5 @@
+"""Test preparation of pull request discussion history."""
+
 import io
 import json
 import os

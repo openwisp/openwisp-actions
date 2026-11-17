@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Prepare the pull request files, diff, and base-branch guidance for review.
 set -euo pipefail
 
 DIR=$(dirname "$(realpath "$0")")

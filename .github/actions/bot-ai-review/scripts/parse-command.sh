@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Select the review stage and model from a pull request comment.
 set -euo pipefail
 
 COMMAND=$(printf '%s' "$BODY" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Read and validate the pull request's head and base commit references.
 set -euo pipefail
 
 PR=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")

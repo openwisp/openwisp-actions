@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Fetch and extract the shared OpenWISP review guidance.
 set -euo pipefail
 
 DIR=$(dirname "$(realpath "$0")")

@@ -1,3 +1,4 @@
+# Fetch review thread state and the first comment identifying each thread.
 query ($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {

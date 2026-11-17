@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Replace the pending reaction with the review's outcome.
 set -euo pipefail
 
 REACTIONS="repos/$REPOSITORY/issues/comments/$COMMENT_ID/reactions"

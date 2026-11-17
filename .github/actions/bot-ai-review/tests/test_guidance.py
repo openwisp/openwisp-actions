@@ -1,3 +1,5 @@
+"""Test selection of base-branch repository guidance."""
+
 import os
 import subprocess
 import sys

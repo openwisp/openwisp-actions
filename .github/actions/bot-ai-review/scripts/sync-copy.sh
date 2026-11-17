@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Synchronize the review files into the sandbox while preserving its edits.
 set -euo pipefail
 
 export LC_ALL=C

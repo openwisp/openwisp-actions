@@ -1,3 +1,5 @@
+"""Test validation and extraction of AI review findings."""
+
 import io
 import json
 import os

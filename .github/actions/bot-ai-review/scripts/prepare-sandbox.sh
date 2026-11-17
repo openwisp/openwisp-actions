@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Prepare the separate user and shell used to run review commands.
 set -euo pipefail
 
 DIR=$(dirname "$(realpath "$0")")

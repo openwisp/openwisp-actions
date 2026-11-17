@@ -1,3 +1,5 @@
+"""Test synchronization of the review sandbox working copy."""
+
 import os
 import shutil
 import subprocess

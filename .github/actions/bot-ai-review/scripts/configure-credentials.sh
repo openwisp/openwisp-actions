@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Configure OpenCode's GitHub Copilot credentials for the review.
 set -euo pipefail
 
 AUTH_DIR="$RUNNER_TEMP/opencode-data/opencode"

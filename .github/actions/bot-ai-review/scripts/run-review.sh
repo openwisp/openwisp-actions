@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Run the selected AI review and extract its findings.
 set -euo pipefail
 
 DIR=$(dirname "$(realpath "$0")")

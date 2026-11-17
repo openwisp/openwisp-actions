@@ -1,3 +1,5 @@
+"""Test extraction of shared OpenWISP review guidance."""
+
 import os
 import subprocess
 import sys

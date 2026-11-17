@@ -1,3 +1,5 @@
+"""Test publication of AI reviews and dismissal of older reviews."""
+
 import json
 import os
 import subprocess

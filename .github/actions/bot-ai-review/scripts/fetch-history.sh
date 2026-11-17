@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Collect pull request discussion and context for the review.
 set -euo pipefail
 
 DIR=$(dirname "$(realpath "$0")")

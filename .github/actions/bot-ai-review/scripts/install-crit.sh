@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Install the pinned Crit binary after verifying its checksum.
 set -euo pipefail
 
 VERSION=v0.23.2

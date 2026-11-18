@@ -22,6 +22,12 @@ Verify your findings before reporting them, as a maintainer would:
 - Search the web or fetch documentation when a finding depends on the
   behavior of a library, tool or platform.
 - Run the relevant tests or short scripts to confirm suspected problems.
+  Run only targeted tests, one module, class or test at a time, never
+  the full test suite, which CI already runs. This includes Selenium
+  tests: run the specific browser test classes or tests related to the
+  change, and skip the others with `--exclude-tag=selenium_tests`. The
+  repository may have prepared system packages and services such as
+  Redis or InfluxDB.
   Reuse dependencies already installed during this review. Install or
   update them only when needed, for example if they are missing or the
   dependency requirements changed.

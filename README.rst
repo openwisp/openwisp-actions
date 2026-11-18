@@ -874,6 +874,21 @@ and the comment gets a confused reaction. With ``github-copilot``, pass
 the Copilot token as the ``OPENCODE_AUTH`` secret. Each review states the
 provider and model it used.
 
+**Test environment**
+
+To let the reviewer run tests that need system packages or services, the
+caller can pass these optional inputs. The workflow installs them before
+the review starts; the model itself cannot use ``sudo`` or Docker.
+
+- ``apt-packages``: system packages, e.g. the GeoDjango libraries.
+- ``compose-services``: services started from the repository's
+  ``docker-compose.yml`` on the base branch, e.g. ``redis influxdb``.
+- ``pip-install``: arguments for ``pip install``, run in the pull request
+  copy, e.g. ``-r requirements-test.txt -e .``.
+
+The reviewer runs only targeted tests, including specific Selenium tests,
+never the full test suite. Each review is limited to 50 minutes.
+
 **Usage Example**
 
 .. code-block:: yaml
@@ -893,6 +908,12 @@ provider and model it used.
           issues: read
           pull-requests: read
         uses: openwisp/openwisp-actions/.github/workflows/reusable-bot-ai-review.yml@master
+        with:
+          apt-packages: >-
+            sqlite3 gdal-bin libproj-dev libgeos-dev libspatialite-dev
+            spatialite-bin libsqlite3-mod-spatialite
+          compose-services: redis influxdb
+          pip-install: -r requirements-test.txt -e .
         secrets:
           APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
           PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}

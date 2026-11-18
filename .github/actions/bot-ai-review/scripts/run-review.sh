@@ -39,10 +39,10 @@ esac
 PROMPT=$(cat "$DIR/../prompts/$STEP-$STAGE.md" "$RUNNER_TEMP/shared-guidance/guidance.md" \
   "$DIR/../prompts/verification.md")
 STATUS=0
-timeout --kill-after=30s 25m opencode run "$PROMPT" --pure --format json \
+timeout --kill-after=30s 50m opencode run "$PROMPT" --pure --format json \
   --model "$MODEL" --dir "$PR_DIR" "${FILES[@]}" </dev/null >"$EVENTS" || STATUS=$?
 if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
-  echo "::warning::The review hit the 25-minute limit"
+  echo "::warning::The review hit the 50-minute limit"
 fi
 
 AUTH="$XDG_DATA_HOME/opencode/auth.json"

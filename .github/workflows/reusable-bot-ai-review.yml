@@ -2,6 +2,19 @@ name: AI Review
 
 on:
   workflow_call:
+    inputs:
+      apt-packages:
+        description: System packages needed to run the tests, separated by spaces.
+        type: string
+        default: ""
+      compose-services:
+        description: Services from the repository's docker-compose.yml to start, separated by spaces.
+        type: string
+        default: ""
+      pip-install:
+        description: Arguments for pip install, run in the pull request copy.
+        type: string
+        default: ""
     secrets:
       APP_ID:
         required: true
@@ -134,7 +147,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.stage != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       PR_DIR: /tmp/ai-review/pr
       DATA_DIR: /tmp/ai-review/data
@@ -174,6 +187,14 @@ jobs:
 
       - name: Prepare sandbox user
         run: trusted_scripts/.github/actions/bot-ai-review/scripts/prepare-sandbox.sh
+
+      - name: Prepare test environment
+        if: inputs.apt-packages != '' || inputs.compose-services != '' || inputs.pip-install != ''
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+          COMPOSE_SERVICES: ${{ inputs.compose-services }}
+          PIP_INSTALL: ${{ inputs.pip-install }}
+        run: trusted_scripts/.github/actions/bot-ai-review/scripts/prepare-test-environment.sh
 
       - name: Install OpenCode
         run: npm install -g opencode-ai@1.18.35 # zizmor: ignore[adhoc-packages] The exact OpenCode release is pinned.

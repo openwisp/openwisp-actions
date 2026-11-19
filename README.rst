@@ -855,7 +855,8 @@ and discussion, and the OpenWISP issues linked in the description, as
 data. The writing and review rules shared by OpenWISP AI tools are read by
 the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
 <https://github.com/openwisp/openwisp-opencode-configs>`_; if a section is
-missing, the review notes it in its summary.
+missing, the review notes it in its summary. Each review is limited to 50
+minutes, and the model is told about the limit so it replies in time.
 
 **Model configuration**
 

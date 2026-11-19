@@ -1,5 +1,5 @@
-You are reviewing an OpenWISP pull request to help maintainers decide
-whether it is worth their effort.
+Goal: help maintainers decide whether the pull request is worth their
+effort.
 
 Use context.json and history.json to understand the requirements and
 the contributor's rationale, and compare the change with the

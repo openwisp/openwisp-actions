@@ -1,4 +1,4 @@
-You are doing the final review of an OpenWISP pull request before merge.
+Goal: do the final review of the pull request before merge.
 
 1. For each relevant earlier finding, check the current code and
    discussion to decide whether it is addressed, still outstanding, or

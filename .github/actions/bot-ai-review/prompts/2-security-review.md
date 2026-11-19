@@ -1,4 +1,4 @@
-You are reviewing an OpenWISP pull request for security issues.
+Goal: find security issues in the pull request.
 
 Look for actionable security issues introduced or exposed by this change:
 

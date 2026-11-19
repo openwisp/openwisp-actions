@@ -72,12 +72,25 @@ class TestMessage(unittest.TestCase):
         self.assertIn("More text.", result)
 
     def test_keeps_other_details_blocks_from_bots(self):
-        body = (
-            "Finding.\n\n<details>\n<summary>Prompt formatting regression</summary>"
-            "\nThe prompt template loses its newline.\n</details>"
-        )
         bot = {"login": "coderabbitai[bot]", "type": "Bot"}
-        self.assertEqual(message({"user": bot, "body": body})["body"], body)
+        for summary in [
+            "Prompt formatting regression",
+            "Notes about Prompt for AI Agents",
+        ]:
+            with self.subTest(summary=summary):
+                body = (
+                    f"Finding.\n\n<details>\n<summary>{summary}</summary>"
+                    "\nThe prompt template loses its newline.\n</details>"
+                )
+                self.assertEqual(message({"user": bot, "body": body})["body"], body)
+
+    def test_removes_agent_prompts_with_an_icon(self):
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        body = (
+            "Finding.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>"
+            "\nRun coderabbit review --agent.\n</details>"
+        )
+        self.assertEqual(message({"user": bot, "body": body})["body"], "Finding.\n\n")
 
     def test_keeps_agent_prompts_written_by_people(self):
         body = f"Please check.\n\n{AGENT_BLOCK}"

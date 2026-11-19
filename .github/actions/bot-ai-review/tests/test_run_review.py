@@ -41,7 +41,7 @@ class TestRunReview(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         with open(os.path.join(root, "args")) as f:
             args = f.read().splitlines()
-        self.assertIn(f"{root}/data/guidance.md", args)
+        self.assertIn(f"{root}/data/agents.md", args)
 
     def run_review(self, event, status=0, guidance=False):
         directory = tempfile.TemporaryDirectory()
@@ -51,7 +51,7 @@ class TestRunReview(unittest.TestCase):
             os.mkdir(os.path.join(root, name))
         files = ["pr.diff", "context.json", "history.json"]
         if guidance:
-            files.append("guidance.md")
+            files.append("agents.md")
         for name in files:
             with open(os.path.join(root, "data", name), "w") as f:
                 f.write("guidance")

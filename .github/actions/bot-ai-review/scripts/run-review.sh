@@ -24,25 +24,21 @@ fi
 opencode models "${MODEL%%/*}" --refresh || true
 chmod a-w "$DATA_DIR"/*
 FILES=(--file "$DATA_DIR/pr.diff")
-if { [ "$STAGE" = review ] || [ "$STAGE" = final-review ]; } && [ -s "$DATA_DIR/guidance.md" ]; then
-  FILES+=(--file "$DATA_DIR/guidance.md")
+if { [ "$STAGE" = review ] || [ "$STAGE" = final-review ]; } && [ -s "$DATA_DIR/agents.md" ]; then
+  FILES+=(--file "$DATA_DIR/agents.md")
 fi
 if [ "$STAGE" = review ]; then
   FILES+=(--file "$DATA_DIR/threat-model.rst")
 fi
 FILES+=(--file "$DATA_DIR/context.json" --file "$DATA_DIR/history.json")
-case "$STAGE" in
-  review) STEP=1 ;;
-  security-review) STEP=2 ;;
-  final-review) STEP=3 ;;
-esac
-PROMPT=$(cat "$DIR/../prompts/$STEP-$STAGE.md" "$RUNNER_TEMP/shared-guidance/guidance.md" \
-  "$DIR/../prompts/verification.md")
+REVIEW_MINUTES=50
+PROMPT=$("$DIR/build-prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
+  "$RUNNER_TEMP/shared-guidance/guidance.md")
 STATUS=0
-timeout --kill-after=30s 25m opencode run "$PROMPT" --pure --format json \
+timeout --kill-after=30s "${REVIEW_MINUTES}m" opencode run "$PROMPT" --pure --format json \
   --model "$MODEL" --dir "$PR_DIR" "${FILES[@]}" </dev/null >"$EVENTS" || STATUS=$?
 if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
-  echo "::warning::The review hit the 25-minute limit"
+  echo "::warning::The review hit the $REVIEW_MINUTES-minute limit"
 fi
 
 AUTH="$XDG_DATA_HOME/opencode/auth.json"

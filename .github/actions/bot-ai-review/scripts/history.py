@@ -4,11 +4,19 @@ Usage: history.py <directory>
 
 - Reads every page fetched by fetch-history.sh, so no discussion is left out.
 - Groups inline comments into threads with their resolved state.
+- Removes the prompts that review bots such as CodeRabbit add for AI
+  agents, so the reviewer does not mistake them for prompt injection.
 """
 
 import json
 import os
+import re
 import sys
+
+AGENT_PROMPT = re.compile(
+    r"<details>\s*<summary>(?:(?!</summary>).)*Prompt for[^<]*</summary>.*?</details>",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def load(directory, name):
@@ -25,7 +33,10 @@ def author(item):
 
 
 def message(item):
-    return {"author": author(item), "body": item["body"]}
+    body = item["body"]
+    if (item.get("user") or {}).get("type") == "Bot":
+        body = AGENT_PROMPT.sub("", body)
+    return {"author": author(item), "body": body}
 
 
 def build(comments, reviews, review_comments, threads):

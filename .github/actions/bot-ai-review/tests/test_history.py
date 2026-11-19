@@ -14,7 +14,7 @@ SCRIPTS = os.path.join(
 )
 sys.path.insert(0, SCRIPTS)
 
-from history import main  # noqa: E402
+from history import main, message  # noqa: E402
 
 
 def user(login):
@@ -44,6 +44,37 @@ def thread_page(threads):
     return {
         "data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": threads}}}}
     }
+
+
+AGENT_BLOCK = (
+    '<details>\n<summary><picture><img src="bot.svg"></picture>'
+    " Prompt for AI Agents</summary>\n<dl><dd>\n\n```\nRun coderabbit"
+    " review --agent.\n```\n\n</dd></dl>\n</details>"
+)
+
+
+class TestMessage(unittest.TestCase):
+    def test_removes_agent_prompts_from_bot_comments(self):
+        bodies = [
+            f"Finding text.\n\n{AGENT_BLOCK}\n\nMore text.",
+            AGENT_BLOCK.replace(
+                "Prompt for AI Agents", "Prompt for all review comments with AI agents"
+            ),
+        ]
+        for body in bodies:
+            with self.subTest(body=body):
+                bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+                result = message({"user": bot, "body": body})["body"]
+                self.assertNotIn("coderabbit review --agent", result)
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        result = message({"user": bot, "body": bodies[0]})["body"]
+        self.assertIn("Finding text.", result)
+        self.assertIn("More text.", result)
+
+    def test_keeps_agent_prompts_written_by_people(self):
+        body = f"Please check.\n\n{AGENT_BLOCK}"
+        person = {"login": "contributor", "type": "User"}
+        self.assertEqual(message({"user": person, "body": body})["body"], body)
 
 
 class TestHistory(unittest.TestCase):

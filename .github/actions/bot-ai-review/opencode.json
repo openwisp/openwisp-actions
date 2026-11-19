@@ -32,7 +32,15 @@
       "yarn install*": "allow",
       "yarn test*": "allow",
       "lua *": "allow",
-      "busted*": "allow"
+      "busted*": "allow",
+      "ls": "allow",
+      "ls -la": "allow",
+      "which chromium": "allow",
+      "which chromium-browser": "allow",
+      "which google-chrome": "allow",
+      "which chromedriver": "allow",
+      "which chromium chromium-browser google-chrome chromedriver": "allow",
+      "yarn --version": "allow"
     }
   }
 }

@@ -229,7 +229,14 @@ jobs:
           name: ai-review-findings
           path: ${{ runner.temp }}/findings
 
+      - name: Check for inline comments
+        id: comments
+        env:
+          FINDINGS: ${{ runner.temp }}/findings/findings.json
+        run: echo "present=$(jq -r '.comments | length > 0' "$FINDINGS")" >> "$GITHUB_OUTPUT"
+
       - name: Install Crit
+        if: steps.comments.outputs.present == 'true'
         run: trusted_scripts/.github/actions/bot-ai-review/scripts/install-crit.sh
 
       - name: Generate write app token
@@ -240,7 +247,7 @@ jobs:
           private-key: ${{ secrets.PRIVATE_KEY }}
           permission-pull-requests: write
 
-      - name: Publish with Crit
+      - name: Publish review
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}

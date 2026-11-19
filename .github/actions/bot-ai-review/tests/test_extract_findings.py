@@ -16,7 +16,6 @@ SCRIPTS = os.path.join(
 sys.path.insert(0, SCRIPTS)
 
 from extract_findings import (  # noqa: E402
-    ANCHOR_BODY,
     FALLBACK,
     MAX_COMMENTS,
     VERDICTS,
@@ -314,30 +313,30 @@ class TestValidate(unittest.TestCase):
 class TestParseDiff(unittest.TestCase):
     def test_does_not_split_diff_rows_on_vertical_tab(self):
         diff = "--- /dev/null\n+++ b/app.txt\n@@ -0,0 +1,2 @@\n+prefix\v@@ -0,0 +100 @@\n+last\n"
-        self.assertEqual(parse_diff(diff), ({"app.txt": {1, 2}}, ("app.txt", 1)))
+        self.assertEqual(parse_diff(diff), {"app.txt": {1, 2}})
 
     def test_added_header_like_content_remains_in_hunk(self):
         diff = '--- a/app.py\n+++ b/app.py\n@@ -0,0 +1,2 @@\n+++ "x\n+next\n'
-        self.assertEqual(parse_diff(diff), ({"app.py": {1, 2}}, ("app.py", 1)))
+        self.assertEqual(parse_diff(diff), {"app.py": {1, 2}})
 
     def test_malformed_quoted_path_is_ignored(self):
         diff = '--- /dev/null\n+++ "b/unterminated\n@@ -0,0 +1 @@\n+x\n'
-        self.assertEqual(parse_diff(diff), ({}, None))
+        self.assertEqual(parse_diff(diff), {})
 
-    def test_returns_new_side_lines_and_first_added_line(self):
-        self.assertEqual(parse_diff(DIFF), (LINES, ("app.py", 2)))
+    def test_returns_new_side_lines(self):
+        self.assertEqual(parse_diff(DIFF), LINES)
 
     def test_reads_every_file(self):
         diff = DIFF + (
             "diff --git a/b.py b/b.py\n--- a/b.py\n+++ b/b.py\n"
             "@@ -10,2 +10,2 @@\n x\n-y\n+z\n"
         )
-        lines, _ = parse_diff(diff)
+        lines = parse_diff(diff)
         self.assertEqual(lines["b.py"], {10, 11})
 
-    def test_anchors_deletions_on_an_unchanged_line(self):
+    def test_includes_unchanged_lines_in_deletion_hunks(self):
         diff = "--- a/app.py\n+++ b/app.py\n@@ -4,2 +4,1 @@\n keep\n-drop\n"
-        self.assertEqual(parse_diff(diff), ({"app.py": {4}}, ("app.py", 4)))
+        self.assertEqual(parse_diff(diff), {"app.py": {4}})
 
     def test_decodes_quoted_and_spaced_file_names(self):
         cases = [
@@ -350,9 +349,9 @@ class TestParseDiff(unittest.TestCase):
         for header, name in cases:
             with self.subTest(name=name):
                 diff = f"--- /dev/null\n{header}\n@@ -0,0 +1 @@\n+x\n"
-                self.assertEqual(parse_diff(diff), ({name: {1}}, (name, 1)))
+                self.assertEqual(parse_diff(diff), {name: {1}})
 
-    def test_has_no_anchor_without_new_side_lines(self):
+    def test_has_no_lines_without_new_side_lines(self):
         changes = {
             "deleted file": "git rm -q old.py",
             "emptied file": ": >old.py",
@@ -380,7 +379,7 @@ class TestParseDiff(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 ).stdout
-                self.assertEqual(parse_diff(diff), ({}, None))
+                self.assertEqual(parse_diff(diff), {})
 
 
 class TestMain(unittest.TestCase):
@@ -402,16 +401,13 @@ class TestMain(unittest.TestCase):
         result = self.run_main("\x1b[31mError\x1b[0m")
         self.assertEqual(result["verdict"], FALLBACK["verdict"])
         self.assertEqual(result["event"], "comment")
-        self.assertEqual(
-            result["comments"],
-            [{"file": "app.py", "line": 2, "body": ANCHOR_BODY}],
-        )
+        self.assertEqual(result["comments"], [])
 
     def test_falls_back_on_wrong_types(self):
         result = self.run_main('{"verdict": [], "title": "T", "summary": "S"}')
         self.assertEqual(result["verdict"], FALLBACK["verdict"])
 
-    def test_adds_anchor_when_there_are_no_comments(self):
+    def test_does_not_add_inline_comment_when_there_are_no_findings(self):
         output = json.dumps(
             {
                 "verdict": "Ready to merge",
@@ -422,7 +418,7 @@ class TestMain(unittest.TestCase):
         )
         result = self.run_main(output, stage="final-review")
         self.assertEqual(result["event"], "approve")
-        self.assertEqual(result["comments"][0]["body"], ANCHOR_BODY)
+        self.assertEqual(result["comments"], [])
 
     def test_keeps_valid_comments(self):
         output = json.dumps(
@@ -437,7 +433,7 @@ class TestMain(unittest.TestCase):
         result = self.run_main(output)
         self.assertEqual(result["event"], "request-changes")
         self.assertEqual(len(result["comments"]), 1)
-        self.assertNotEqual(result["comments"][0]["body"], ANCHOR_BODY)
+        self.assertIn("Body", result["comments"][0]["body"])
 
     def review(self, **decision):
         data = {"verdict": "Looks good", "title": "T", "summary": "S", **decision}
@@ -489,7 +485,7 @@ class TestMain(unittest.TestCase):
         self.assertEqual(result["event"], "request-changes")
         self.assertEqual(result["summary"], "S")
         self.assertEqual(len(result["comments"]), 1)
-        self.assertNotEqual(result["comments"][0]["body"], ANCHOR_BODY)
+        self.assertIn("Body", result["comments"][0]["body"])
 
     def test_reports_prompt_injection_in_every_stage(self):
         output = json.dumps(

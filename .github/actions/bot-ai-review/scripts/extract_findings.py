@@ -5,8 +5,6 @@ Usage: extract_findings.py <model-output> <diff> <stage>
 - Prints the findings as JSON, or a "review not completed" fallback.
 - Keeps only line comments on new-side diff lines, which GitHub accepts,
   and lists the other findings in the summary instead of dropping them.
-- Adds a comment pointing to the summary when there are none, because
-  Crit only posts reviews with at least one line comment.
 """
 
 import ast
@@ -42,7 +40,6 @@ MAX_COMMENTS = 20
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
-ANCHOR_BODY = "See the review summary."
 FALLBACK = {
     "event": "comment",
     "verdict": "Review not completed",
@@ -241,8 +238,6 @@ def unquote(name):
 
 def parse_diff(diff):
     lines = {}
-    added = []
-    unchanged = []
     path = None
     line = 0
     old_remaining = new_remaining = 0
@@ -269,17 +264,15 @@ def parse_diff(diff):
             new_remaining -= 1
             if path is not None:
                 lines.setdefault(path, set()).add(line)
-                (added if row.startswith("+") else unchanged).append((path, line))
             line += 1
-    anchor = (added or unchanged or [None])[0]
-    return lines, anchor
+    return lines
 
 
 def main():
     with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
         text = ANSI.sub("", f.read())
     with open(sys.argv[2], encoding="utf-8", errors="replace", newline="") as f:
-        lines, anchor = parse_diff(f.read())
+        lines = parse_diff(f.read())
     stage = sys.argv[3]
     data = find_json(text)
     findings = validate(data, lines, VERDICTS[stage]) if data else None
@@ -287,10 +280,6 @@ def main():
         note = perimeter(data, findings["verdict"] == "Maintainer decision needed")
         findings = {**findings, "summary": findings["summary"] + note} if note else None
     findings = findings or dict(FALLBACK)
-    if not findings["comments"] and anchor:
-        findings["comments"] = [
-            {"file": anchor[0], "line": anchor[1], "body": ANCHOR_BODY}
-        ]
     print(json.dumps(findings))
 
 

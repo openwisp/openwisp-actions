@@ -71,6 +71,14 @@ class TestMessage(unittest.TestCase):
         self.assertIn("Finding text.", result)
         self.assertIn("More text.", result)
 
+    def test_keeps_other_details_blocks_from_bots(self):
+        body = (
+            "Finding.\n\n<details>\n<summary>Prompt formatting regression</summary>"
+            "\nThe prompt template loses its newline.\n</details>"
+        )
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        self.assertEqual(message({"user": bot, "body": body})["body"], body)
+
     def test_keeps_agent_prompts_written_by_people(self):
         body = f"Please check.\n\n{AGENT_BLOCK}"
         person = {"login": "contributor", "type": "User"}

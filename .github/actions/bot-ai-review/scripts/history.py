@@ -14,7 +14,8 @@ import re
 import sys
 
 AGENT_PROMPT = re.compile(
-    r"<details>\s*<summary>(?:(?!</summary>).)*Prompt for[^<]*</summary>.*?</details>",
+    r"<details>\s*<summary>(?:(?!</summary>).)*"
+    r"Prompt for (?:all review comments with )?AI agents\s*</summary>.*?</details>",
     re.IGNORECASE | re.DOTALL,
 )
 

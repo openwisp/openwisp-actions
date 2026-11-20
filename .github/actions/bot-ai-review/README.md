@@ -1,7 +1,7 @@
 # On-demand AI review
 
-Start with [`scripts/__main__.sh`](scripts/__main__.sh) to see which script
-handles each operation in the [AI review workflow](../../workflows/reusable-bot-ai-review.yml).
+Start with the [AI review workflow](../../workflows/reusable-bot-ai-review.yml)
+to see the job sequence and scripts called by each step.
 For setup, commands, and model configuration, see [On-Demand AI Review](../../../README.rst#on-demand-ai-review).
 
 ## Flow
@@ -20,21 +20,18 @@ P --> X
 
 ## Layout
 
-- `scripts/`: `__main__.sh` dispatches each workflow step by name. Step
-  implementations and helpers, including the scripts installed into the
-  sandbox, sit beside it.
+- `reusable/`: workflow step implementations and helpers, including scripts installed into the sandbox.
 - `prompts/shared/`: prompt parts used by every review.
 - `prompts/stages/`: the prompt of each review stage.
 - `opencode.json`: OpenCode configuration (tool permissions and allowed
   commands).
 - `tests/`: tests for the review scripts.
 
-## Jobs and entry-point commands
+## Jobs and scripts
 
-Each subcommand runs the same-named shell script in `scripts/`. For example,
-`bash scripts/__main__.sh parse-command` runs `scripts/parse-command.sh`.
+The workflow calls the named scripts in `reusable/` directly.
 
-| Job           | Subcommand              | Result                                                     |
+| Job           | Script                  | Result                                                     |
 | ------------- | ----------------------- | ---------------------------------------------------------- |
 | `gate`        | `parse-command`         | Review stage, model, and optional reasoning effort outputs |
 | `gate`        | `read-pull-request`     | Head and base commit outputs                               |
@@ -56,7 +53,7 @@ outside the PR copy in `/tmp/ai-review/pr/`. It writes `findings.json` under
 
 ## Prompt
 
-`scripts/build-prompt.sh` joins the prompt in this order:
+`reusable/build-prompt.sh` joins the prompt in this order:
 
 1. `prompts/shared/context.md`, with the time limit filled in.
 2. `prompts/stages/<n>-<stage>.md`.

@@ -8,9 +8,9 @@ import tempfile
 import unittest
 
 SCRIPTS = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reusable"
 )
-SCRIPT = os.path.join(SCRIPTS, "__main__.sh")
+SCRIPT = os.path.join(SCRIPTS, "publish.sh")
 HEAD_SHA = "a" * 40
 REVIEWS = [
     {
@@ -91,9 +91,7 @@ def publish(
             "STAGE": stage,
             "MODEL": "provider/model",
         }
-        result = subprocess.run(
-            ["bash", SCRIPT, "publish"], env=env, capture_output=True
-        )
+        result = subprocess.run(["bash", SCRIPT], env=env, capture_output=True)
         with open(os.path.join(state, "log")) as f:
             log = f.read().splitlines()
         review = os.path.join(state, "review.json")

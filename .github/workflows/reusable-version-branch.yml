@@ -42,7 +42,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: workflow-scripts
+          path: openwisp-actions
           persist-credentials: false
 
       - name: Set up Python
@@ -65,7 +65,7 @@ jobs:
         working-directory: caller
         env:
           MODULE_NAME: ${{ inputs.module_name }}
-        run: bash ../workflow-scripts/.github/actions/version-branch/scripts/__main__.sh version
+        run: python ../openwisp-actions/.github/actions/version-branch/reusable/version.py
 
   replicate:
     name: Replicate commits to version branch
@@ -91,12 +91,12 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: workflow-scripts
+          path: openwisp-actions
           persist-credentials: false
 
       - name: Fast-forward version branch
         working-directory: caller
-        run: bash ../workflow-scripts/.github/actions/version-branch/scripts/__main__.sh replicate
+        run: bash ../openwisp-actions/.github/actions/version-branch/reusable/replicate.sh
 
       - name: Generate GitHub App Token
         id: generate-token

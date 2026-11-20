@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
+REUSABLE = Path(__file__).resolve().parents[1] / "reusable"
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ def test_backport_pr_metadata(
         "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
     }
     subprocess.run(
-        ["bash", str(ENTRY_POINT), "backport"],
+        ["bash", str(REUSABLE / "backport.sh")],
         cwd=repo,
         env=env,
         check=True,
@@ -125,7 +125,7 @@ def test_parse_backport_request(tmp_path, commit_sha, response, comment, branche
         "GITHUB_OUTPUT": str(output),
     }
     subprocess.run(
-        ["bash", str(ENTRY_POINT), "parse"],
+        ["bash", str(REUSABLE / "parse.sh")],
         env=env,
         check=True,
         capture_output=True,
@@ -233,7 +233,7 @@ def test_backport_failure_paths(tmp_path, scenario):
         ),
     }
     result = subprocess.run(
-        ["bash", str(ENTRY_POINT), "backport"],
+        ["bash", str(REUSABLE / "backport.sh")],
         cwd=repo,
         env=env,
         capture_output=True,

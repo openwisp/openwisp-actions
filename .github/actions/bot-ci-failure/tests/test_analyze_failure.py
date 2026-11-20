@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reusable"))
 
 from analyze_failure import (  # noqa: E402
     _extract_failed_tests,
@@ -31,7 +31,7 @@ class TestReusableWorkflow(unittest.TestCase):
         self.assertNotIn("Checkout PR Code", workflow)
         self.assertNotIn("path: pr_code", workflow)
         self.assertIn("BASE_SHA: ${{ inputs.base_sha }}", workflow)
-        self.assertIn("scripts/__main__.sh fetch-diff", workflow)
+        self.assertIn("reusable/fetch-diff.sh", workflow)
 
     def test_passes_the_failed_run_base_sha(self):
         workflow = (
@@ -50,14 +50,14 @@ class TestReusableWorkflow(unittest.TestCase):
         self.assertIn(
             "GH_APP_TOKEN: ${{ steps.generate-token.outputs.token }}", workflow
         )
-        self.assertIn("scripts/__main__.sh fetch-diff", workflow)
+        self.assertIn("reusable/fetch-diff.sh", workflow)
 
     def test_allows_escape_sequences_when_fetching_job_logs(self):
         workflow = (
             Path(__file__).resolve().parents[4]
             / ".github/workflows/reusable-bot-ci-failure.yml"
         )
-        self.assertIn("scripts/__main__.sh fetch-logs", workflow.read_text())
+        self.assertIn("reusable/fetch-logs.sh", workflow.read_text())
 
 
 class TestGetErrorLogs(unittest.TestCase):

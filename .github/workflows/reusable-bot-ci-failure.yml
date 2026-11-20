@@ -58,7 +58,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: trusted_scripts
+          path: openwisp-actions
           persist-credentials: false
 
       - name: Fetch PR Diff
@@ -69,25 +69,25 @@ jobs:
           HEAD_SHA: ${{ inputs.head_sha }}
           PR_NUM: ${{ inputs.pr_number }}
           REPO: ${{ inputs.base_repo }}
-        run: bash trusted_scripts/.github/actions/bot-ci-failure/scripts/__main__.sh fetch-diff
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch-diff.sh
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: trusted_scripts/requirements.txt
+          cache-dependency-path: openwisp-actions/requirements.txt
 
       - name: Install Tools
         run: |
-          pip install -r trusted_scripts/requirements.txt
+          pip install -r openwisp-actions/requirements.txt
 
       - name: Fetch Failed Steps Logs
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           RUN_ID: ${{ inputs.run_id }}
           REPO: ${{ inputs.base_repo }}
-        run: bash trusted_scripts/.github/actions/bot-ci-failure/scripts/__main__.sh fetch-logs
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch-logs.sh
 
       - name: Run AI Analysis
         timeout-minutes: 5
@@ -98,7 +98,7 @@ jobs:
           COMMIT_SHA: ${{ inputs.head_sha }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           CI_RETRY_MODE: ${{ vars.CI_RETRY_MODE }}
-        run: bash trusted_scripts/.github/actions/bot-ci-failure/scripts/__main__.sh analyze > solution.md
+        run: python openwisp-actions/.github/actions/bot-ci-failure/reusable/analyze_failure.py > solution.md
 
       - name: Auto-retry transient failures
         id: retry
@@ -109,7 +109,7 @@ jobs:
           RUN_ID: ${{ inputs.run_id }}
           REPO: ${{ inputs.base_repo }}
           HEAD_SHA: ${{ inputs.head_sha }}
-        run: bash trusted_scripts/.github/actions/bot-ci-failure/scripts/__main__.sh retry
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/retry.sh
 
       - name: Post Comment
         if: steps.retry.outputs.retried != 'true'
@@ -117,4 +117,4 @@ jobs:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_NUM: ${{ inputs.pr_number }}
           REPO: ${{ inputs.base_repo }}
-        run: bash trusted_scripts/.github/actions/bot-ci-failure/scripts/__main__.sh post-comment
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/post-comment.sh

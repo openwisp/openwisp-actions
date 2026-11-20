@@ -14,7 +14,7 @@ and OpenWISP squash merges:
 
 
 Usage:
-    bash scripts/__main__.sh generate
+    python shared/generate_changelog.py
 
 Environment Variables:
     GEMINI_API_KEY: API key for Google Gemini (required)

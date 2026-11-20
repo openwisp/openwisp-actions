@@ -109,7 +109,7 @@ jobs:
           cache-dependency-path: openwisp-actions/requirements.txt
 
       - name: Check validation repository list
-        run: python openwisp-actions/.github/actions/bot-autoassign/scripts/__main__.py validate-repositories
+        run: python openwisp-actions/.github/actions/bot-autoassign/reusable/validation_repositories.py
 
       - name: Generate validation token
         id: validation-token
@@ -133,11 +133,12 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           BOT_COMMAND: ${{ inputs.bot_command }}
+          BOT_PATH: openwisp-actions/.github/actions/bot-autoassign/reusable
           BOT_USERNAME: ${{ inputs.bot_username }}
           EXCLUDE_PR_AUTHORS: ${{ inputs.exclude_pr_authors }}
         run: |
-          args=("$BOT_COMMAND")
-          if [ -n "$GITHUB_EVENT_PATH" ]; then
-            args+=("$GITHUB_EVENT_PATH")
-          fi
-          python openwisp-actions/.github/actions/bot-autoassign/scripts/__main__.py "${args[@]}"
+          case "$BOT_COMMAND" in
+            issue_assignment|pr_reopen|stale_pr) ;;
+            *) echo "Unknown bot type: $BOT_COMMAND"; exit 1 ;;
+          esac
+          python "$BOT_PATH/${BOT_COMMAND}_bot.py" ${GITHUB_EVENT_PATH:+"$GITHUB_EVENT_PATH"}

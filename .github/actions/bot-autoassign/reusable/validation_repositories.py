@@ -9,3 +9,7 @@ def validate_repositories():
         print("Failing to prevent minting a token with org-wide access.")
         return 1
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(validate_repositories())

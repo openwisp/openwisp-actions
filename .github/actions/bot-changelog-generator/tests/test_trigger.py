@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
+ACTION_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize(
@@ -23,7 +23,7 @@ ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
 def test_noteworthy_title(tmp_path, title, expected):
     output = tmp_path / "output"
     result = subprocess.run(
-        ["bash", str(ENTRY_POINT), "check-title"],
+        ["bash", str(ACTION_DIR / "caller/check-title.sh")],
         env=os.environ | {"PR_TITLE": title, "GITHUB_OUTPUT": str(output)},
         capture_output=True,
         text=True,
@@ -36,7 +36,7 @@ def test_noteworthy_title(tmp_path, title, expected):
 
 
 def test_trigger_checks_out_trusted_default_branch():
-    workflow = ENTRY_POINT.parents[3] / "workflows/bot-changelog-trigger.yml"
+    workflow = ACTION_DIR.parents[1] / "workflows/bot-changelog-trigger.yml"
     data = yaml.safe_load(workflow.read_text())
     checkout = data["jobs"]["check"]["steps"][0]
     assert checkout["with"]["ref"] == "${{ github.event.repository.default_branch }}"

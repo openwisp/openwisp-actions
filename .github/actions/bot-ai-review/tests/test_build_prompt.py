@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "scripts", "build-prompt.sh")
+SCRIPT = os.path.join(ROOT, "reusable", "build-prompt.sh")
 PROMPTS = os.path.join(ROOT, "prompts")
 
 

@@ -34,7 +34,7 @@ jobs:
         id: check
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: bash .github/actions/bot-changelog-generator/scripts/__main__.sh check-title
+        run: bash .github/actions/bot-changelog-generator/caller/check-title.sh
 
       - name: Save PR metadata
         if: steps.check.outputs.has_noteworthy == 'true'

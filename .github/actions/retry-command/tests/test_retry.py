@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
+ENTRY_POINT = Path(__file__).resolve().parents[1] / "retry.sh"
 
 
 @pytest.mark.parametrize(

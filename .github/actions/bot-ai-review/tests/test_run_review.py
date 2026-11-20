@@ -8,8 +8,8 @@ import unittest
 
 SCRIPT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "scripts",
-    "__main__.sh",
+    "reusable",
+    "run-review.sh",
 )
 
 
@@ -125,6 +125,4 @@ class TestRunReview(unittest.TestCase):
             "EVENT": json.dumps(event),
             "MODEL_STATUS": str(status),
         }
-        return root, subprocess.run(
-            ["bash", SCRIPT, "run-review"], env=env, capture_output=True
-        )
+        return root, subprocess.run(["bash", SCRIPT], env=env, capture_output=True)

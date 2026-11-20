@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
+ACTION_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -48,8 +48,9 @@ def runner(tmp_path):
     }
 
     def run(operation, **values):
+        directory = "caller" if operation == "find-pr" else "reusable"
         result = subprocess.run(
-            ["bash", str(ENTRY_POINT), operation],
+            ["bash", str(ACTION_DIR / directory / f"{operation}.sh")],
             cwd=tmp_path,
             env=env | values,
             capture_output=True,

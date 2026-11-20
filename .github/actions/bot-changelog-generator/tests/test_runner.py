@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
+CALLER = Path(__file__).resolve().parents[1] / "caller"
 
 
 @pytest.fixture
@@ -22,6 +22,8 @@ def runner(tmp_path):
         "if any('/reviews?' in arg for arg in sys.argv):\n"
         "    print(os.environ['REVIEWS'])\n"
         "elif any('/compare/' in arg for arg in sys.argv):\n"
+        "    if '-H' in sys.argv and os.environ.get('DIFF_FAIL') == '1':\n"
+        "        sys.exit(1)\n"
         "    print(os.environ['DIFF'] if '-H' in sys.argv else os.environ['COMPARISON'])\n"
         "else:\n"
         "    print(os.environ['PR'])\n"
@@ -58,7 +60,7 @@ def runner(tmp_path):
 
     def run(operation, **values):
         return subprocess.run(
-            ["bash", str(ENTRY_POINT), operation],
+            ["bash", str(CALLER / f"{operation}.sh")],
             cwd=tmp_path,
             env=env | values,
             capture_output=True,
@@ -163,6 +165,21 @@ def test_prepare_diff_requires_complete_comparison(runner, complete):
         assert result.returncode != 0
         assert "incomplete pull request comparison" in result.stdout
         assert not (root / "git").exists()
+
+
+def test_prepare_diff_fails_when_diff_fetch_fails(runner):
+    root, _, run = runner
+    comparison = {"total_commits": 0, "commits": [], "files": []}
+    result = run(
+        "prepare-diff",
+        APPROVED_HEAD_SHA="a" * 40,
+        APPROVED_BASE_SHA="b" * 40,
+        RUNNER_TEMP=str(root),
+        COMPARISON=json.dumps(comparison),
+        DIFF_FAIL="1",
+    )
+    assert result.returncode != 0
+    assert not (root / "git").exists()
 
 
 @pytest.mark.parametrize(

@@ -53,7 +53,7 @@ jobs:
         id: metadata
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/changelog-metadata
-        run: bash .github/actions/bot-changelog-generator/scripts/__main__.sh read-metadata
+        run: bash .github/actions/bot-changelog-generator/caller/read-metadata.sh
 
       - name: Verify triggering pull request
         if: steps.download.outcome == 'success'
@@ -63,7 +63,7 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           PR_NUMBER: ${{ steps.metadata.outputs.pr_number }}
           REPOSITORY: ${{ github.repository }}
-        run: bash .github/actions/bot-changelog-generator/scripts/__main__.sh verify-association
+        run: bash .github/actions/bot-changelog-generator/caller/verify-association.sh
 
       - name: Verify current eligible approval
         if: steps.download.outcome == 'success'
@@ -73,7 +73,7 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ steps.association.outputs.head_sha }}
           PR_NUMBER: ${{ steps.metadata.outputs.pr_number }}
           REPOSITORY: ${{ github.repository }}
-        run: bash .github/actions/bot-changelog-generator/scripts/__main__.sh verify-approval
+        run: bash .github/actions/bot-changelog-generator/caller/verify-approval.sh
 
   # Secrets are used only after validating the current approved PR and its trusted workflow run.
   changelog: # zizmor: ignore[secrets-outside-env]
@@ -103,7 +103,7 @@ jobs:
           APPROVED_BASE_SHA: ${{ needs.fetch-metadata.outputs.base_sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-        run: bash .github/actions/bot-changelog-generator/scripts/__main__.sh prepare-diff
+        run: bash .github/actions/bot-changelog-generator/caller/prepare-diff.sh
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -130,5 +130,5 @@ jobs:
           PR_NUMBER: ${{ needs.fetch-metadata.outputs.pr_number }}
           REPO_NAME: ${{ github.repository }}
         run: |
-          PATH="$RUNNER_TEMP:$PATH" bash \
-            .github/actions/bot-changelog-generator/scripts/__main__.sh generate
+          PATH="$RUNNER_TEMP:$PATH" python \
+            .github/actions/bot-changelog-generator/shared/generate_changelog.py

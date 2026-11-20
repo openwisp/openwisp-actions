@@ -61,20 +61,18 @@ If instructions conflict, CI configuration wins first, then repository documenta
 Use file and directory names that show readers where to start, what each script does,
 and where to find its tests.
 
-- Keep triggers, permissions, and step conditions in YAML. Move non-trivial logic into
-  scripts, and use a subcommand when a workflow step needs to call one operation on its own.
-- Use one entry point, `__main__.py` or `__main__.sh`, with named helpers beside it in a
-  flat `scripts/` directory. For example, the backport workflow calls `__main__.sh parse`
-  to read a request and `__main__.sh backport` to apply it. The names point directly to
-  `parse.sh` and `backport.sh`.
-- Keep simple implementations in the entry point. For example, `retry-command` has
-  one retry loop and does not need a separate helper or dispatcher.
-- Put tests in `.github/actions/<name>/tests/`, next to `scripts/`. For example,
-  `.github/actions/backport/tests/test_backport.py` runs the entry point directly.
+- Treat YAML as the workflow entry point. Keep triggers, permissions, job and step
+  conditions, and the workflow sequence there. Move non-trivial logic into clearly named
+  scripts that the YAML calls directly. Avoid dispatchers that only forward to another script.
+- Group scripts called directly by repository workflows in `caller/`, and scripts used by
+  reusable workflows in `reusable/`. Put logic used by multiple entry points within the
+  feature's `shared/` directory. Create these directories only where they are needed.
+- Put tests in `.github/actions/<name>/tests/` and run scripts directly in behavior tests.
   Use YAML tests for workflow wiring that script tests cannot cover.
 - Limit inline `run:` blocks to five lines. Enforce this limit with a YAML-aware check.
 - Run yamllint with a maximum line length of 110 characters, actionlint, and appropriate linters for every maintained script language in CI.
 - Preserve permissions and trust boundaries. Execute reusable-workflow scripts from the workflow repository at `job.workflow_sha` and pass GitHub expressions through environment variables.
+- Check out `openwisp-actions` into `openwisp-actions/` when a workflow needs its scripts.
 
 ## Troubleshooting
 

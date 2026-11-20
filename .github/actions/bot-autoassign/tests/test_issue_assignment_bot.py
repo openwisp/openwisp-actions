@@ -2,8 +2,8 @@ import os
 import sys
 from unittest.mock import MagicMock, Mock, call, patch
 
-# Import implementation modules from the action's scripts directory.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts"))
+# Import implementation modules from the reusable workflow directory.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "reusable"))
 
 import pytest  # noqa: E402
 from github import GithubException  # noqa: E402

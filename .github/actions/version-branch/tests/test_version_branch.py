@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
+ACTION_DIR = Path(__file__).resolve().parents[1]
+REUSABLE = ACTION_DIR / "reusable"
 
 
 def test_get_version_from_caller_directory(tmp_path):
@@ -15,7 +16,7 @@ def test_get_version_from_caller_directory(tmp_path):
     output = tmp_path / "output"
     env = os.environ | {"MODULE_NAME": "sample", "GITHUB_OUTPUT": str(output)}
     subprocess.run(
-        ["bash", str(ENTRY_POINT), "version"],
+        ["python", str(REUSABLE / "version.py")],
         cwd=tmp_path,
         env=env,
         check=True,
@@ -59,7 +60,7 @@ def test_replicate_version_branch(tmp_path, scenario):
     sha = git("rev-parse", "HEAD")
     env = os.environ | {"VERSION": "1.2", "GITHUB_SHA": sha}
     result = subprocess.run(
-        ["bash", str(ENTRY_POINT), "replicate"],
+        ["bash", str(REUSABLE / "replicate.sh")],
         cwd=repo,
         env=env,
         capture_output=True,
@@ -75,7 +76,7 @@ def test_replicate_version_branch(tmp_path, scenario):
 
 
 def test_version_workflow_runs_trusted_scripts_in_caller_checkout():
-    path = ENTRY_POINT.parents[3] / "workflows/reusable-version-branch.yml"
+    path = ACTION_DIR.parents[1] / "workflows/reusable-version-branch.yml"
     jobs = yaml.safe_load(path.read_text())["jobs"]
     for name, operation in (("prepare", "version"), ("replicate", "replicate")):
         steps = jobs[name]["steps"]
@@ -88,10 +89,12 @@ def test_version_workflow_runs_trusted_scripts_in_caller_checkout():
             if step["name"] == "Checkout workflow scripts"
         )
         assert caller["path"] == "caller"
-        assert scripts["path"] == "workflow-scripts"
+        assert scripts["path"] == "openwisp-actions"
         assert scripts["repository"] == "${{ job.workflow_repository }}"
         assert scripts["ref"] == "${{ job.workflow_sha }}"
-        command = f"bash ../workflow-scripts/.github/actions/version-branch/scripts/__main__.sh {operation}"
+        script = "version.py" if operation == "version" else "replicate.sh"
+        interpreter = "python" if operation == "version" else "bash"
+        command = f"{interpreter} ../openwisp-actions/.github/actions/version-branch/reusable/{script}"
         step = next(step for step in steps if step.get("run") == command)
         assert step["working-directory"] == caller["path"]
         if name == "prepare":

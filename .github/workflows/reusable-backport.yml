@@ -39,7 +39,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: workflow-scripts
+          path: openwisp-actions
           persist-credentials: false
 
       - name: Extract backport targets
@@ -50,7 +50,7 @@ jobs:
           PR_NUMBER: ${{ inputs.pr_number }}
           COMMENT_BODY: ${{ inputs.comment_body }}
           REPO: ${{ github.repository }}
-        run: bash workflow-scripts/.github/actions/backport/scripts/__main__.sh parse
+        run: bash openwisp-actions/.github/actions/backport/reusable/parse.sh
 
   backport:
     name: Backport changes
@@ -88,7 +88,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: workflow-scripts
+          path: openwisp-actions
           persist-credentials: false
 
       - name: Configure Git
@@ -104,4 +104,4 @@ jobs:
           SHA: ${{ needs.parse.outputs.sha }}
           BRANCH: ${{ matrix.branch }}
           REPO: ${{ github.repository }}
-        run: bash ../workflow-scripts/.github/actions/backport/scripts/__main__.sh backport
+        run: bash ../openwisp-actions/.github/actions/backport/reusable/backport.sh

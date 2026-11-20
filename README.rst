@@ -641,6 +641,14 @@ job:
           APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
           PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
 
+Instead of embedding the PR lookup in a caller workflow, a repository can
+check out a pinned revision of ``openwisp-actions`` and run
+``.github/actions/bot-ci-failure/caller/find-pr.sh``. Pass ``GH_TOKEN``,
+``REPO``, ``PR_NUMBER_PAYLOAD``, ``EVENT_HEAD_SHA``,
+``EVENT_HEAD_REPOSITORY``, and ``EVENT_HEAD_BRANCH`` as environment
+variables. The script writes ``number`` and ``author`` to
+``GITHUB_OUTPUT``.
+
 Changelog Bot
 ~~~~~~~~~~~~~
 
@@ -658,6 +666,13 @@ qualifies and uploads the PR number as an artifact, but requires no
 secrets. The second workflow executes via ``workflow_run`` once the first
 completes: it runs in the context of the base repository, has full access
 to secrets, and is the one that generates and posts the changelog comment.
+
+The trigger and runner can check out a pinned revision of
+``openwisp-actions`` and use the scripts in
+``.github/actions/bot-changelog-generator/caller/``. The generator itself
+is in ``.github/actions/bot-changelog-generator/shared/`` and is also used
+by the composite action. Update the pinned revision and script paths
+together when adopting changes to these scripts.
 
 **Secrets**
 

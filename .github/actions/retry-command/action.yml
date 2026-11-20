@@ -25,4 +25,4 @@ runs:
         DELAY_SECONDS: ${{ inputs.delay_seconds }}
         MAX_ATTEMPTS: ${{ inputs.max_attempts }}
         ACTION_PATH: ${{ github.action_path }}
-      run: bash "$ACTION_PATH/scripts/__main__.sh"
+      run: bash "$ACTION_PATH/retry.sh"

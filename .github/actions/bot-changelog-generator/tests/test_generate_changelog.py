@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 # Add the directory to path for importing (must be before local imports)
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "shared"))
 import unittest  # noqa: E402
 from unittest.mock import MagicMock, patch  # noqa: E402
 
@@ -958,11 +958,11 @@ class TestChangelogTriggerWorkflow(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("Verify triggering pull request", workflow)
         self.assertIn("Verify current eligible approval", workflow)
-        self.assertIn("scripts/__main__.sh verify-approval", workflow)
-        self.assertIn("scripts/__main__.sh prepare-diff", workflow)
+        self.assertIn("caller/verify-approval.sh", workflow)
+        self.assertIn("caller/prepare-diff.sh", workflow)
         self.assertNotIn("refs/pull/", workflow)
         self.assertIn(
-            ".github/actions/bot-changelog-generator/scripts/__main__.sh generate",
+            ".github/actions/bot-changelog-generator/shared/generate_changelog.py",
             workflow,
         )
 

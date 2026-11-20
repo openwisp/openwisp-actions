@@ -32,7 +32,7 @@ if [ "$STAGE" = review ]; then
 fi
 FILES+=(--file "$DATA_DIR/context.json" --file "$DATA_DIR/history.json")
 REVIEW_MINUTES=50
-PROMPT=$("$DIR/build-prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
+PROMPT=$("$DIR/lib/build-prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
   "$RUNNER_TEMP/shared-guidance/guidance.md")
 STATUS=0
 timeout --kill-after=30s "${REVIEW_MINUTES}m" opencode run "$PROMPT" --pure --format json \
@@ -71,7 +71,7 @@ if ! [ -s "$OUTPUT" ] || ! grep -q '[^[:space:]]' "$OUTPUT"; then
   exit 1
 fi
 
-python3 "$DIR/extract_findings.py" "$OUTPUT" "$DATA_DIR/pr.diff" "$STAGE" \
+python3 "$DIR/lib/extract_findings.py" "$OUTPUT" "$DATA_DIR/pr.diff" "$STAGE" \
   >"$RUNNER_TEMP/findings.json"
 if [ -s "$RUNNER_TEMP/shared-guidance/notes.md" ]; then
   jq --rawfile notes "$RUNNER_TEMP/shared-guidance/notes.md" \

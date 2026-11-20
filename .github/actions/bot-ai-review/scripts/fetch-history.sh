@@ -10,6 +10,6 @@ gh api --paginate --slurp "$API/issues/$PR_NUMBER/comments" >"$OUT/comments.json
 gh api --paginate --slurp "$API/pulls/$PR_NUMBER/reviews" >"$OUT/reviews.json"
 gh api --paginate --slurp "$API/pulls/$PR_NUMBER/comments" >"$OUT/review-comments.json"
 gh api graphql --paginate --slurp -F owner="$OWNER" -F name="$NAME" \
-  -F number="$PR_NUMBER" -F query=@"$DIR/history.graphql" >"$OUT/threads.json"
-python3 "$DIR/history.py" "$OUT" >"$DATA_DIR/history.json"
-python3 "$DIR/context.py" "$OWNER/$NAME" "$PR_NUMBER" >"$DATA_DIR/context.json"
+  -F number="$PR_NUMBER" -F query=@"$DIR/lib/history.graphql" >"$OUT/threads.json"
+python3 "$DIR/lib/history.py" "$OUT" >"$DATA_DIR/history.json"
+python3 "$DIR/lib/context.py" "$OWNER/$NAME" "$PR_NUMBER" >"$DATA_DIR/context.json"

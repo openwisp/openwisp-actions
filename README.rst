@@ -928,12 +928,25 @@ Run the test suite with:
 
     ./runtests
 
-Run formatting, linting, ReStructuredText, and GitHub Actions security
-checks with:
+Run formatting, Python and shell linting, GitHub Actions workflow syntax,
+ReStructuredText, and GitHub Actions security checks with:
 
 .. code-block:: shell
 
     ./run-qa-checks
+
+The workflow syntax check uses actionlint. Its current release does not
+yet recognize the ``$/`` local-action syntax, the
+``job.workflow_repository`` and ``job.workflow_sha`` contexts, or the
+concurrency ``queue`` key. The QA script excludes those specific
+diagnostics until actionlint supports them.
+
+Shell scripts, including extensionless entry points, are limited to 110
+characters per line. YAML files are checked with yamllint and have the
+same line-length limit.
+
+Inline workflow and composite action ``run:`` blocks may contain at most
+five lines. Move longer logic into scripts and test the scripts directly.
 
 Format supported files before committing changes:
 

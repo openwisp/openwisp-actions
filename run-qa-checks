@@ -6,6 +6,30 @@ openwisp-qa-check \
       --skip-checkmakemigrations \
       --skip-checkcommit
 
+# Explicitly include hidden action directories in Python checks.
+isort --check-only --diff .github
+black --check .github
+flake8 .github
+python .github/actions/qa/scripts/__main__.py line-length
+python .github/actions/qa/scripts/__main__.py inline-run
+python .github/actions/qa/scripts/__main__.py source-formats
+yamllint -s .
+
 zizmor --offline --persona=auditor .
 
-shellcheck .github/actions/*/scripts/*.sh .github/actions/*/scripts/*/*.sh
+# Actionlint 1.7.12 predates these GitHub Actions syntax and context features.
+actionlint \
+      -ignore 'reusable workflow call "\$/.*" at "uses" is not following' \
+      -ignore 'specifying action "\$/.*" in invalid format' \
+      -ignore 'property "workflow_(repository|sha)" is not defined' \
+      -ignore 'unexpected key "queue" for "concurrency" section'
+
+shell_scripts=()
+while IFS= read -r -d '' file; do
+      IFS= read -r first_line < "$file" || true
+      if [[ "$file" == *.sh || "$first_line" =~ ^#!.*(ba)?sh([[:space:]]|$) ]]; then
+            shell_scripts+=("$file")
+      fi
+done < <(find . \( -name .git -o -name .venv -o -name venv -o -name env -o -name .tox \
+      -o -name node_modules -o -name __pycache__ \) -prune -o -type f -print0)
+shellcheck "${shell_scripts[@]}"

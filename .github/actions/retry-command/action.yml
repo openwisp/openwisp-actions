@@ -24,19 +24,5 @@ runs:
         COMMAND: ${{ inputs.command }}
         DELAY_SECONDS: ${{ inputs.delay_seconds }}
         MAX_ATTEMPTS: ${{ inputs.max_attempts }}
-      run: |
-        readonly COMMAND DELAY_SECONDS MAX_ATTEMPTS
-        attempts=0
-        until [ "$attempts" -ge "$MAX_ATTEMPTS" ]
-        do
-          echo "Attempt $((attempts+1)) of $MAX_ATTEMPTS..."
-          eval "$COMMAND" && break
-          attempts=$((attempts+1))
-          if [ "$attempts" -lt "$MAX_ATTEMPTS" ]; then
-            echo "Command failed. Waiting ${DELAY_SECONDS}s before retry..."
-            sleep "$DELAY_SECONDS"
-          else
-            echo "Command failed after $attempts attempts."
-            exit 1
-          fi
-        done
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/scripts/__main__.sh"

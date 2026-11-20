@@ -19,4 +19,4 @@ fi
 if ! [ -s "$SOURCE" ]; then
   echo "::warning::The shared AI guidance could not be downloaded"
 fi
-python3 "$DIR/lib/shared_guidance.py" "$SOURCE" "$OUT/guidance.md" "$OUT/notes.md"
+python3 "$DIR/shared_guidance.py" "$SOURCE" "$OUT/guidance.md" "$OUT/notes.md"

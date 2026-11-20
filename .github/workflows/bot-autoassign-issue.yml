@@ -1,6 +1,7 @@
 name: Issue Assignment Bot
 on:
-  issue_comment: # zizmor: ignore[dangerous-triggers] Comments are the assignment interface; trusted bot code validates requests and issues.
+  # Comments request assignment; trusted bot code validates requests and issues.
+  issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
 permissions: {}
 concurrency:

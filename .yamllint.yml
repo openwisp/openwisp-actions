@@ -1,0 +1,16 @@
+extends: relaxed
+ignore: |
+  .git/
+  .venv/
+  venv/
+  env/
+  .tox/
+  node_modules/
+rules:
+  line-length:
+    max: 110
+    level: error
+    allow-non-breakable-words: false
+    allow-non-breakable-inline-mappings: false
+  truthy:
+    allowed-values: ['true', 'false', 'on']

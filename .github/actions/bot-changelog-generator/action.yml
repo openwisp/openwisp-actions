@@ -44,8 +44,7 @@ runs:
         GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
         GEMINI_MODEL: ${{ inputs.gemini-model }}
         ACTION_PATH: ${{ github.action_path }}
-      run: |
-        python "$ACTION_PATH/generate_changelog.py"
+      run: bash "$ACTION_PATH/scripts/__main__.sh" generate
 
 branding:
   icon: "file-text"

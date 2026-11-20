@@ -224,8 +224,10 @@ def test_backport_failure_paths(tmp_path, scenario):
         "FAIL_LOOKUP": str(int(scenario == "lookup_failure")),
         "CREATE_ATTEMPT": str(tmp_path / "create-attempt"),
         "OPEN_PRS": (
-            '[[{"number":9,"head":{"ref":"unrelated"}}],'
-            '[{"number":51,"head":{"ref":"backport/42-to-1.3-123"}}]]'
+            '[[{"number":9,"head":{"ref":"backport/42-to-1.3-123",'
+            '"repo":{"full_name":"example/fork"}}}],'
+            '[{"number":51,"head":{"ref":"backport/42-to-1.3-456",'
+            '"repo":{"full_name":"example/repo"}}}]]'
             if scenario == "existing_pr"
             else "[[]]"
         ),

@@ -38,8 +38,10 @@ else
   # The existing backport may be older than the first page of open PRs.
   OPEN_PRS=$(gh api --method GET --paginate --slurp "repos/$REPO/pulls" \
     -f state=open -f "base=$BRANCH" -F per_page=100)
-  EXISTING=$(jq -r --arg prefix "$BRANCH_PREFIX" \
-    'first(.[][] | select(.head.ref | startswith($prefix)) | .number)' <<< "$OPEN_PRS")
+  # The bot pushes to the caller repository, so fork branches cannot be its backports.
+  EXISTING=$(jq -r --arg prefix "$BRANCH_PREFIX" --arg repo "$REPO" '
+    first(.[][] | select(.head.repo.full_name == $repo and (.head.ref | startswith($prefix))) | .number)
+  ' <<< "$OPEN_PRS")
   if [ -n "$EXISTING" ]; then
     echo "Backport PR #$EXISTING already exists"
     gh pr comment "$PR_NUMBER" --body "Backport to \`$BRANCH\` already exists: #$EXISTING"

@@ -15,6 +15,7 @@ emit_pr() {
 }
 
 matching_pr() {
+  # A commit can appear in multiple PRs. Only accept one open PR with the run's exact head.
   jq --slurp --raw-output --arg head_sha "$EVENT_HEAD_SHA" \
     --arg head_repo "$EVENT_HEAD_REPOSITORY" --arg head_branch "$EVENT_HEAD_BRANCH" '
     [.[][] | select(.state == "open" and .head.sha == $head_sha
@@ -41,6 +42,7 @@ if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
   exit 0
 fi
 echo "API lookup failed/empty. Searching open PRs for matching head SHA..."
+# GitHub's head filter takes owner:branch, not owner/repository:branch.
 HEAD_OWNER="${EVENT_HEAD_REPOSITORY%%/*}"
 if [ -n "$HEAD_OWNER" ] && [ -n "$EVENT_HEAD_BRANCH" ] && \
   OPEN_PRS=$(gh api --method GET --paginate "repos/$REPO/pulls" \

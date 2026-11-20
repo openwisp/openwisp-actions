@@ -1,4 +1,5 @@
 #!/bin/bash
+# Run the same quality checks locally and in CI.
 set -e
 
 openwisp-qa-check \
@@ -24,8 +25,11 @@ actionlint \
       -ignore 'property "workflow_(repository|sha)" is not defined' \
       -ignore 'unexpected key "queue" for "concurrency" section'
 
+# Discover shell scripts by extension or shebang so root entry points are checked too.
 shell_scripts=()
+# NUL separators keep filenames with spaces or newlines intact.
 while IFS= read -r -d '' file; do
+      # read can reach EOF on an empty file or a final line without a newline.
       IFS= read -r first_line < "$file" || true
       if [[ "$file" == *.sh || "$first_line" =~ ^#!.*(ba)?sh([[:space:]]|$) ]]; then
             shell_scripts+=("$file")

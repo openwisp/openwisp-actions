@@ -1,9 +1,8 @@
 # On-demand AI review
 
-Scripts, prompts and configuration used by
-`.github/workflows/reusable-bot-ai-review.yml`. Usage and configuration are
-documented in the repository `README.rst`; this file explains how the
-pieces fit together.
+Start with [`scripts/__main__.sh`](scripts/__main__.sh) to see which script
+handles each operation in the [AI review workflow](../../workflows/reusable-bot-ai-review.yml).
+For setup, commands, and model configuration, see [On-Demand AI Review](../../../README.rst#on-demand-ai-review).
 
 ## Flow
 
@@ -32,24 +31,28 @@ P --> X
 
 ## Jobs and entry-point commands
 
-| Job           | Step                                     | Entry point                | Calls                                                          | Writes                                               |
-| ------------- | ---------------------------------------- | -------------------------- | -------------------------------------------------------------- | ---------------------------------------------------- |
-| `gate`        | Parse command                            | `parse-command`            |                                                                | `stage`, `model` outputs                             |
-| `gate`        | Read pull request                        | `read-pull-request`        |                                                                | `head_sha`, `base_sha` outputs                       |
-| `gate`        | Fetch shared AI guidance                 | `fetch-shared-guidance`    | `shared_guidance.py`                                           | `shared-guidance/guidance.md`, `notes.md` (artifact) |
-| `acknowledge` | Add eyes reaction                        | inline `gh api`            |                                                                | `reaction_id` output                                 |
-| `review`      | Fetch pull request as data               | `fetch-pull-request`       | `guidance.py`                                                  | `/tmp/ai-review/pr/`, `pr.diff`, `guidance.md`       |
-| `review`      | Fetch threat model (`/review` only)      | `fetch-threat-model`       |                                                                | `threat-model.rst`                                   |
-| `review`      | Prepare sandbox user                     | `prepare-sandbox`          | installs `sandbox-shell.sh` and `sync-copy.sh`                  | `reviewer` user                                      |
-| `review`      | Configure provider credentials           | `configure-credentials`    |                                                                | `$RUNNER_TEMP/opencode-data/`                        |
-| `review`      | Fetch pull request discussion            | `fetch-history`            | `history.graphql`, `history.py`, `context.py`                   | `history.json`, `context.json`                       |
-| `review`      | Run review                               | `run-review`               | `build-prompt.sh`, `extract_findings.py`                        | `findings.json` (artifact)                           |
-| `publish`     | Install Crit (only with inline comments) | `install-crit`             |                                                                | `crit`                                               |
-| `publish`     | Publish review                           | `publish`                  |                                                                | the review on GitHub                                 |
-| `react`       | Replace eyes reaction                    | `update-reaction`          |                                                                | the final reaction                                   |
+Each subcommand runs the same-named shell script in `scripts/`. For example,
+`bash scripts/__main__.sh parse-command` runs `scripts/parse-command.sh`.
 
-Unless stated otherwise, the review data is stored in `/tmp/ai-review/data/`,
-outside the pull request copy in `/tmp/ai-review/pr/`.
+| Job | Subcommand | Result |
+| --- | --- | --- |
+| `gate` | `parse-command` | Review stage and model outputs |
+| `gate` | `read-pull-request` | Head and base commit outputs |
+| `gate` | `fetch-shared-guidance` | `shared-guidance/guidance.md` and `notes.md` artifact |
+| `acknowledge` | Inline `gh api` call | Eyes reaction and its ID |
+| `review` | `fetch-pull-request` | PR copy, `pr.diff`, and `guidance.md` |
+| `review` | `fetch-threat-model` | `threat-model.rst` for `/review` only |
+| `review` | `prepare-sandbox` | `reviewer` user and sandbox scripts |
+| `review` | `configure-credentials` | Provider credentials under `$RUNNER_TEMP/opencode-data/` |
+| `review` | `fetch-history` | `history.json` and `context.json` |
+| `review` | `run-review` | `findings.json` artifact |
+| `publish` | `install-crit` | Installs Crit only when the review has inline comments |
+| `publish` | `publish` | GitHub review and dismissal of superseded change requests |
+| `react` | `update-reaction` | Final reaction when the eyes reaction was added |
+
+The review job keeps the diff and other model inputs in `/tmp/ai-review/data/`,
+outside the PR copy in `/tmp/ai-review/pr/`. It writes `findings.json` under
+`$RUNNER_TEMP`, then uploads it for the publish job.
 
 ## Prompt
 
@@ -64,10 +67,18 @@ outside the pull request copy in `/tmp/ai-review/pr/`.
 
 - Every shell command of the model runs through `sandbox-shell.sh` as the
   `reviewer` user, without `sudo`.
-- The model reads and edits the pull request in one copy, and commands run
-  in a second copy. Files created by the pull request's code, such as a
-  symlink to the credentials, stay in the second copy and can never be
-  opened by the model's file tools, which can read the credentials.
-- Before each command, `sync-copy.sh` copies the model's latest edits to
-  the second copy and removes the files it deleted, so commands always run
-  on the same code the model sees.
+- The model reads and edits `/tmp/ai-review/pr/`. Its shell commands run in
+  `/tmp/ai-review/run/`. The sync copies files only from the model's copy
+  to the command copy, so files generated by tests do not appear in the
+  model's copy.
+- Before each command, `sync-copy.sh` copies the model's edits to the command
+  copy and removes files deleted from the model's copy.
+
+## Local checks
+
+For local checks and dependencies, see [Local Development](../../../CONTRIBUTING.rst#local-development).
+To run just the review tests from the repository root:
+
+```shell
+python -m pytest .github/actions/bot-ai-review/tests -q
+```

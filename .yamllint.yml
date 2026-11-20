@@ -1,3 +1,4 @@
+# Check YAML formatting while allowing the on key used by GitHub Actions.
 extends: relaxed
 ignore: |
   .git/

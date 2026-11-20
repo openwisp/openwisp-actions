@@ -4,6 +4,7 @@ import os
 import re
 from pathlib import Path
 
+# Match sh and bash in both direct and env shebangs, including scripts without an extension.
 SHELL_SHEBANG = re.compile(r"^#!.*(?:^|[/\s])(?:ba)?sh(?:\s|$)")
 EXCLUDED_DIRECTORIES = {
     ".git",

@@ -436,9 +436,9 @@ It supports two triggers:
 - **Comment**: Comment ``/backport X.Y`` on a merged PR (org members
   only).
 
-If the cherry-pick fails due to conflicts, the bot comments on the PR with
-manual resolution steps. If the target branch does not exist or the PR is
-not yet merged, the workflow exits safely without failing.
+When a cherry-pick conflicts and the commit came from a PR, the bot posts
+manual resolution steps on that PR. A missing target branch fails the
+backport job. The workflow skips requests for PRs that are not yet merged.
 
 .. code-block:: yaml
 
@@ -682,9 +682,6 @@ formatting issues that can be fixed deterministically.
 **Setup for Other Repositories**
 
 To enable the changelog bot in any OpenWISP repository, create the
-following two workflow files.
-
-To enable the changelog bot in any OpenWISP repository, create the
 following two workflow files under ``.github/workflows/``.
 
 The trigger workflow runs when a PR review is submitted. If the PR is
@@ -857,8 +854,8 @@ the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
 <https://github.com/openwisp/openwisp-opencode-configs>`_; if a section is
 missing, the review notes it in its summary. Each review is limited to 50
 minutes, and the model is told about the limit so it replies in time. How
-the scripts and prompts fit together is described in
-.github/actions/bot-ai-review/README.md.
+the scripts and prompts fit together is described in the `AI review
+implementation guide <.github/actions/bot-ai-review/README.md>`_.
 
 **Model configuration**
 
@@ -904,55 +901,8 @@ provider and model it used.
 Development
 ===========
 
-This repository requires Python 3.13, the version used in continuous
-integration.
-
-Clone the repository and create a virtual environment:
-
-.. code-block:: shell
-
-    git clone https://github.com/openwisp/openwisp-actions.git
-    cd openwisp-actions
-    python3.13 -m venv env
-    source env/bin/activate
-
-Install the runtime and development dependencies:
-
-.. code-block:: shell
-
-    pip install -r requirements.txt -r requirements-test.txt
-
-Run the test suite with:
-
-.. code-block:: shell
-
-    ./runtests
-
-Run formatting, Python and shell linting, GitHub Actions workflow syntax,
-ReStructuredText, and GitHub Actions security checks with:
-
-.. code-block:: shell
-
-    ./run-qa-checks
-
-The workflow syntax check uses actionlint. Its current release does not
-yet recognize the ``$/`` local-action syntax, the
-``job.workflow_repository`` and ``job.workflow_sha`` contexts, or the
-concurrency ``queue`` key. The QA script excludes those specific
-diagnostics until actionlint supports them.
-
-Shell scripts, including extensionless entry points, are limited to 110
-characters per line. YAML files are checked with yamllint and have the
-same line-length limit.
-
-Inline workflow and composite action ``run:`` blocks may contain at most
-five lines. Move longer logic into scripts and test the scripts directly.
-
-Format supported files before committing changes:
-
-.. code-block:: shell
-
-    openwisp-qa-format
+See `Local Development <CONTRIBUTING.rst#local-development>`_ to set up
+the Python environment and run tests and QA checks.
 
 Contributing
 ============

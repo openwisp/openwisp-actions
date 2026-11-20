@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
+# Run all action test suites, including those added by future actions.
 
 python -m pytest .github/actions/*/tests -q

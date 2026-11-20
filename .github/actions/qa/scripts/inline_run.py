@@ -40,6 +40,7 @@ def check_inline_runs(root):
         text = path.read_text(encoding="utf-8")
         lines = text.splitlines()
         for node in run_nodes(yaml.compose(text)):
+            # YAML folds > blocks into fewer logical lines. Count the lines authors wrote.
             if node.style in ("|", ">"):
                 body = lines[slice(node.start_mark.line + 1, node.end_mark.line)]
             else:

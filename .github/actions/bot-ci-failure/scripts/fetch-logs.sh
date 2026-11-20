@@ -20,6 +20,7 @@ for JOB_ID in $JOB_IDS; do
   fi
   {
     echo "===== JOB $JOB_ID ====="
+    # Start a fresh buffer at each group header and keep it only if an error follows.
     awk '
     /##\[group\]/ {
         buffer = $0 "\n"

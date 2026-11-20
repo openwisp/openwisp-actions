@@ -9,6 +9,7 @@ if [ "$HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]; then
   exit 1
 fi
 REVIEWS=$(gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews?per_page=100")
+# A later decision supersedes an approval from the same reviewer. Comments do not.
 if ! jq -e --arg head_sha "$HEAD_SHA" '
   [.[][] | select(.user.id != null and .state != "COMMENTED" and .state != "PENDING")]
   | group_by(.user.id)

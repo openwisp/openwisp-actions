@@ -3,10 +3,11 @@
 set -eo pipefail
 MAX_RETRIES=3
 MARKER="<!-- ci-transient-retry $HEAD_SHA -->"
-# gh --jq cannot pass jq's --arg, so count the exact marker with grep.
+# Match the current commit's marker literally. gh --jq cannot pass jq's --arg.
 RETRY_COUNT=$(gh pr view "$PR_NUM" --repo "$REPO" --json comments \
   --jq '.comments[].body' 2>/dev/null \
   | grep -cF "$MARKER" || echo "0")
+# grep prints 0 and exits 1 on no match, so the fallback can leave two lines.
 if ! [[ "$RETRY_COUNT" =~ ^[0-9]+$ ]]; then
   RETRY_COUNT=0
 fi

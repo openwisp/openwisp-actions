@@ -2,6 +2,7 @@
 # Select the review stage and model from a pull request comment.
 set -euo pipefail
 
+# GitHub comments can have CRLF line endings or surrounding whitespace.
 COMMAND=$(printf '%s' "$BODY" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 case "$COMMAND" in
   /review) STAGE=review NAME=${GENERAL_MODEL:-} ;;

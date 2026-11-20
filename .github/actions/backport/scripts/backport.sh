@@ -32,6 +32,7 @@ else
   BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${BRANCH}"
   PR_TITLE="[backport] #${PR_NUMBER}: $PR_TITLE (to $BRANCH)"
   BODY="Backport of #$PR_NUMBER to \`$BRANCH\`."
+  # The same backport may already be open under a branch with an older timestamp.
   BRANCH_PREFIX="backport/${PR_NUMBER}-to-${BRANCH}-"
   EXISTING=$(gh pr list --base "$BRANCH" --state open --json number,headRefName \
     --jq ".[] | select(.headRefName | startswith(\"${BRANCH_PREFIX}\")) | .number" | head -1)
@@ -43,6 +44,7 @@ else
 fi
 BACKPORT_BRANCH="${BACKPORT_BRANCH}-$(date +%s)"
 git checkout -b "$BACKPORT_BRANCH" "origin/$BRANCH"
+# An empty cherry-pick also returns nonzero, so inspect Git's state before failing the job.
 CHERRY_PICK_STATUS=0
 git cherry-pick -x "$SHA" || CHERRY_PICK_STATUS=$?
 if [ "$CHERRY_PICK_STATUS" -eq 0 ]; then
@@ -56,6 +58,7 @@ if [ "$CHERRY_PICK_STATUS" -eq 0 ]; then
       --title "$PR_TITLE" \
       --body "$BODY"; then
     echo "::error::Failed to create PR"
+    # Remove the branch we just pushed so a failed PR request leaves no remote branch behind.
     git push origin --delete "$BACKPORT_BRANCH" || true
     exit 1
   fi
@@ -65,6 +68,7 @@ if [ "$CHERRY_PICK_STATUS" -eq 0 ]; then
     echo "- **Target Branch**: $BRANCH"
     echo "- **Backport Branch**: $BACKPORT_BRANCH"
   } >> "$GITHUB_STEP_SUMMARY"
+# An already-applied change leaves no staged differences, unlike an unresolved conflict.
 elif git diff --cached --quiet; then
   echo "Commit $SHA appears to already be in $BRANCH (empty cherry-pick)"
   git cherry-pick --abort || true

@@ -6,6 +6,7 @@ if [ ! -d "$ARTIFACT_DIR" ] || [ -L "$ARTIFACT_DIR" ]; then
   echo "::error::Invalid metadata artifact directory"
   exit 1
 fi
+# List hidden entries too, and preserve filenames containing whitespace when counting entries.
 mapfile -d '' ARTIFACT_FILES < <(find "$ARTIFACT_DIR" -mindepth 1 -maxdepth 1 -print0)
 if [ "${#ARTIFACT_FILES[@]}" -ne 1 ] || [ "${ARTIFACT_FILES[0]}" != "$PR_NUMBER_FILE" ] || \
   [ -L "$PR_NUMBER_FILE" ] || [ ! -f "$PR_NUMBER_FILE" ]; then

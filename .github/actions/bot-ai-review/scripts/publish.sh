@@ -41,6 +41,7 @@ case "$VERDICT" in
   "Review not completed" | Inconclusive | "Maintainer decision needed") exit 0 ;;
 esac
 
+# Keep the newest review for this stage. Dismiss only the earlier bot change requests.
 gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |
   jq -rs --arg prefix "AI $STAGE of " '
     [.[][] | select(.user.type == "Bot" and (.body | startswith($prefix)))]

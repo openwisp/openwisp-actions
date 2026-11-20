@@ -56,6 +56,7 @@ if [ "$STATUS" -ne 0 ]; then
   exit 1
 fi
 
+# Disable GitHub workflow commands while printing untrusted model output and tool logs.
 STOP=$(openssl rand -hex 16)
 echo "::stop-commands::$STOP"
 jq -r 'select(.type == "error") | "Error: \(.error.data.message // .error.name)"' "$EVENTS" || true
@@ -65,6 +66,7 @@ jq -r 'select(.type == "step_finish") | .part
   | "Step: \(.reason), output tokens: \(.tokens.output), reasoning tokens: \(.tokens.reasoning)"' \
   "$EVENTS" || true
 echo "::$STOP::"
+# Earlier text events can be progress updates. Use the last text event as the answer.
 jq -rs '[.[] | select(.type == "text") | .part.text] | last // ""' "$EVENTS" >"$OUTPUT"
 if ! [ -s "$OUTPUT" ] || ! grep -q '[^[:space:]]' "$OUTPUT"; then
   REASON=$(jq -rs '[.[] | select(.type == "step_finish") | .part.reason] | last // "none"' "$EVENTS")

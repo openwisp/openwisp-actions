@@ -61,6 +61,24 @@ class TestParseCommand(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(parse(body), {})
 
+    def test_selects_the_effort_for_each_stage(self):
+        efforts = {
+            "GENERAL_EFFORT": "high",
+            "SECURITY_EFFORT": "xhigh",
+            "FINAL_EFFORT": "max",
+        }
+        for command, effort in (
+            ("/review", "high"),
+            ("/security-review", "xhigh"),
+            ("/final-review", "max"),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(parse(command, **efforts)["effort"], effort)
+
+    def test_rejects_effort_with_newline(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            parse("/review", GENERAL_EFFORT="high\nmodel=other/model")
+
 
 if __name__ == "__main__":
     unittest.main()

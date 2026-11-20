@@ -6,4 +6,5 @@ python -m pytest \
   .github/actions/bot-changelog-generator/test_generate_changelog.py \
   .github/actions/bot-ci-failure/test_analyze_failure.py \
   .github/actions/bot-ai-review/tests \
+  .github/actions/backport/test_backport.py \
   -q

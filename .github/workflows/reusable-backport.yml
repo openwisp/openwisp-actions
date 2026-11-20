@@ -128,9 +128,14 @@ jobs:
           if [ -z "$PR_NUMBER" ]; then
             BACKPORT_BRANCH="backport/commit-${SHA:0:7}-to-${BRANCH}"
             BODY="Backport of commit $SHA to \`$BRANCH\`."
-            PR_TITLE="Backport commit ${SHA:0:7} to $BRANCH"
+            PR_TITLE="[backport] $(git log -1 --format=%s "$SHA") (to $BRANCH)"
+            COMMIT_BODY=$(git log -1 --format=%b "$SHA")
+            if [ -n "$COMMIT_BODY" ]; then
+              BODY=$(printf '%s\n\n%s' "$BODY" "$COMMIT_BODY")
+            fi
           else
             BACKPORT_BRANCH="backport/${PR_NUMBER}-to-${BRANCH}"
+            PR_TITLE="[backport] #${PR_NUMBER}: $PR_TITLE (to $BRANCH)"
 
             BODY="Backport of #$PR_NUMBER to \`$BRANCH\`."
             EXISTING=$(gh pr list --base "$BRANCH" --state open --json number,headRefName \
@@ -153,7 +158,7 @@ jobs:
             if ! gh pr create \
                 --base "$BRANCH" \
                 --head "$BACKPORT_BRANCH" \
-                --title "[backport] #${PR_NUMBER}: $PR_TITLE (to $BRANCH)" \
+                --title "$PR_TITLE" \
                 --body "$BODY"; then
               echo "::error::Failed to create PR"
               git push origin --delete "$BACKPORT_BRANCH" || true

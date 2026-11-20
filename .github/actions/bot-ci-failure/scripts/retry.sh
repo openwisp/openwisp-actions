@@ -3,14 +3,14 @@
 set -eo pipefail
 MAX_RETRIES=3
 MARKER="<!-- ci-transient-retry $HEAD_SHA -->"
-# Match the current commit's marker literally. gh --jq cannot pass jq's --arg.
-RETRY_COUNT=$(gh pr view "$PR_NUM" --repo "$REPO" --json comments \
-  --jq '.comments[].body' 2>/dev/null \
-  | grep -cF "$MARKER" || echo "0")
-# grep prints 0 and exits 1 on no match, so the fallback can leave two lines.
-if ! [[ "$RETRY_COUNT" =~ ^[0-9]+$ ]]; then
-  RETRY_COUNT=0
+# If GitHub cannot return the previous markers, another retry could exceed the cap.
+if ! COMMENTS=$(gh pr view "$PR_NUM" --repo "$REPO" --json comments --jq '.comments[].body' 2>/dev/null); then
+  echo "::warning::Could not check previous retries. Skipping auto-retry."
+  echo "retried=false" >> "$GITHUB_OUTPUT"
+  exit 0
 fi
+# grep prints 0 but exits 1 when a successful lookup contains no markers.
+RETRY_COUNT=$(grep -cF "$MARKER" <<< "$COMMENTS" || true)
 echo "Previous retries: $RETRY_COUNT"
 if [ "$RETRY_COUNT" -ge "$MAX_RETRIES" ]; then
   echo "Max retries ($MAX_RETRIES) reached; skipping."

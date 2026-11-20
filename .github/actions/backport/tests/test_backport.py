@@ -143,6 +143,9 @@ def test_parse_backport_request(tmp_path, commit_sha, response, comment, branche
         "push_failure",
         "invalid_branch",
         "missing_branch",
+        "lookup_failure",
+        "existing_pr",
+        "merge_commit",
     ],
 )
 def test_backport_failure_paths(tmp_path, scenario):
@@ -174,6 +177,11 @@ def test_backport_failure_paths(tmp_path, scenario):
         (repo / "file").write_text("different change\n")
         git("commit", "-am", "Conflicting change")
         git("checkout", "master")
+    elif scenario == "merge_commit":
+        git("branch", "feature")
+        git("reset", "--hard", "HEAD^")
+        git("merge", "--no-ff", "feature", "-m", "Merge feature")
+        sha = git("rev-parse", "HEAD")
     git("push", "origin", "1.3")
     if scenario == "push_failure":
         hook = remote / "hooks/pre-receive"
@@ -185,10 +193,15 @@ def test_backport_failure_paths(tmp_path, scenario):
         "#!/bin/sh\n"
         'if [ "$1" = api ]; then\n'
         '  printf \'%s\\n\' \'{"number":42,"title":"Source"}\'\n'
+        "elif [ \"$1 $2\" = 'pr list' ]; then\n"
+        '  [ "$FAIL_LOOKUP" != 1 ] || exit 1\n'
+        '  printf "%s\\n" "$OPEN_PRS"\n'
         "elif [ \"$1 $2\" = 'pr create' ]; then\n"
+        '  touch "$CREATE_ATTEMPT"\n'
         "  exit 1\n"
         "elif [ \"$1 $2\" = 'pr comment' ]; then\n"
-        '  cp "$5" "$COMMENT_OUTPUT"\n'
+        '  if [ "$4" = --body-file ]; then cp "$5" "$COMMENT_OUTPUT";\n'
+        '  else printf "%s\\n" "$5" > "$COMMENT_OUTPUT"; fi\n'
         "fi\n"
     )
     gh.chmod(0o755)
@@ -203,6 +216,14 @@ def test_backport_failure_paths(tmp_path, scenario):
         "REPO": "example/repo",
         "GITHUB_STEP_SUMMARY": str(summary),
         "COMMENT_OUTPUT": str(comment),
+        "FAIL_LOOKUP": str(int(scenario == "lookup_failure")),
+        "CREATE_ATTEMPT": str(tmp_path / "create-attempt"),
+        "OPEN_PRS": (
+            '[{"number":9,"headRefName":"unrelated"},'
+            '{"number":51,"headRefName":"backport/42-to-1.3-123"}]'
+            if scenario == "existing_pr"
+            else "[]"
+        ),
     }
     result = subprocess.run(
         ["bash", str(ENTRY_POINT), "backport"],
@@ -230,6 +251,18 @@ def test_backport_failure_paths(tmp_path, scenario):
     elif scenario == "missing_branch":
         assert result.returncode != 0
         assert "does not exist" in result.stdout
+    elif scenario == "lookup_failure":
+        assert result.returncode != 0
+        assert not (tmp_path / "create-attempt").exists()
+        assert git("branch", "--list", "backport/*") == ""
+    elif scenario == "existing_pr":
+        assert result.returncode == 0
+        assert "already exists: #51" in comment.read_text()
+        assert not (tmp_path / "create-attempt").exists()
+    elif scenario == "merge_commit":
+        assert result.returncode != 0
+        assert "empty cherry-pick" not in result.stdout
+        assert not (tmp_path / "create-attempt").exists()
     else:
         assert result.returncode != 0
         assert "Invalid branch name" in result.stdout

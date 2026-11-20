@@ -163,3 +163,45 @@ def test_prepare_diff_requires_complete_comparison(runner, complete):
         assert result.returncode != 0
         assert "incomplete pull request comparison" in result.stdout
         assert not (root / "git").exists()
+
+
+@pytest.mark.parametrize(
+    ("association", "later_review", "allowed"),
+    [
+        ("MEMBER", "CHANGES_REQUESTED", False),
+        ("MEMBER", "DISMISSED", False),
+        ("MEMBER", "COMMENTED", True),
+        ("CONTRIBUTOR", None, False),
+    ],
+)
+def test_approval_uses_latest_eligible_decision_across_pages(
+    runner, association, later_review, allowed
+):
+    root, _, run = runner
+    approval = {
+        "user": {"id": 1},
+        "state": "APPROVED",
+        "commit_id": "abc",
+        "author_association": association,
+        "submitted_at": "2026-01-01T00:00:00Z",
+        "id": 1,
+    }
+    pages = [[approval]]
+    if later_review:
+        pages.append(
+            [
+                approval
+                | {
+                    "state": later_review,
+                    "submitted_at": "2026-01-02T00:00:00Z",
+                    "id": 2,
+                }
+            ]
+        )
+    result = run("verify-approval", REVIEWS=json.dumps(pages))
+    if allowed:
+        assert result.returncode == 0, result.stderr
+        assert (root / "output").read_text() == "head_sha=abc\nbase_sha=base\n"
+    else:
+        assert result.returncode != 0
+        assert not (root / "output").exists()

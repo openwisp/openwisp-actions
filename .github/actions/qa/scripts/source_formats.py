@@ -8,6 +8,11 @@ from graphql import GraphQLError, parse
 from line_length import EXCLUDED_DIRECTORIES
 
 
+def reject_nonstandard_number(value):
+    """Reject NaN and infinities, which Python accepts but JSON does not."""
+    raise ValueError(f"Invalid JSON number: {value}")
+
+
 def check_source_formats(root):
     failed = False
     for directory, subdirectories, files in os.walk(root):
@@ -19,7 +24,7 @@ def check_source_formats(root):
             try:
                 text = path.read_text(encoding="utf-8")
                 if path.suffix == ".json":
-                    json.loads(text)
+                    json.loads(text, parse_constant=reject_nonstandard_number)
                 else:
                     parse(text)
             except (ValueError, GraphQLError) as error:

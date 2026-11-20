@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 ENTRY_POINT = Path(__file__).resolve().parents[1] / "scripts/__main__.sh"
 
@@ -71,3 +72,31 @@ def test_replicate_version_branch(tmp_path, scenario):
     else:
         assert result.returncode == 0, result.stderr
         assert git("rev-parse", "1.2") == sha
+
+
+def test_version_workflow_runs_trusted_scripts_in_caller_checkout():
+    path = ENTRY_POINT.parents[3] / "workflows/reusable-version-branch.yml"
+    jobs = yaml.safe_load(path.read_text())["jobs"]
+    for name, operation in (("prepare", "version"), ("replicate", "replicate")):
+        steps = jobs[name]["steps"]
+        caller = next(
+            step["with"] for step in steps if step["name"] == "Checkout repository"
+        )
+        scripts = next(
+            step["with"]
+            for step in steps
+            if step["name"] == "Checkout workflow scripts"
+        )
+        assert caller["path"] == "caller"
+        assert scripts["path"] == "workflow-scripts"
+        assert scripts["repository"] == "${{ job.workflow_repository }}"
+        assert scripts["ref"] == "${{ job.workflow_sha }}"
+        command = f"bash ../workflow-scripts/.github/actions/version-branch/scripts/__main__.sh {operation}"
+        step = next(step for step in steps if step.get("run") == command)
+        assert step["working-directory"] == caller["path"]
+        if name == "prepare":
+            assert (
+                jobs[name]["outputs"]["version"]
+                == "${{ steps." + step["id"] + ".outputs.version }}"
+            )
+    assert jobs["replicate"]["env"]["VERSION"] == "${{ needs.prepare.outputs.version }}"

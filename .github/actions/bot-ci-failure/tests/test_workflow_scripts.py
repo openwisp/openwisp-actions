@@ -20,12 +20,16 @@ def runner(tmp_path):
         "    calls.write(json.dumps([os.environ.get('GH_TOKEN'), *sys.argv[1:]]) + '\\n')\n"
         "args = sys.argv[1:]\n"
         "if args[:2] == ['pr', 'view'] and '--json' in args:\n"
+        "    if os.environ.get('VIEW_FAIL') == '1':\n"
+        "        sys.exit(1)\n"
         "    print(os.environ.get('VIEW_RESPONSE', ''))\n"
         "elif args and args[0] == 'api':\n"
         "    if os.environ.get('API_FAIL') == '1':\n"
         "        sys.exit(1)\n"
         "    if '--allow-escape-sequences' in args:\n"
         "        print(os.environ.get('LOG_RESPONSE', ''))\n"
+        "    elif '--method' in args and 'OPEN_PRS' in os.environ:\n"
+        "        print(os.environ['OPEN_PRS'])\n"
         "    else:\n"
         "        print(os.environ.get('API_RESPONSE', ''))\n"
     )
@@ -135,7 +139,8 @@ def test_find_pr_uses_payload_and_resolves_author(runner):
     assert calls[0][1:4] == ["pr", "view", "42"]
 
 
-def test_find_pr_fallback_requires_exact_head(runner):
+@pytest.mark.parametrize("commits_match", [True, False])
+def test_find_pr_matches_head_in_commit_or_open_pr_lookup(runner, commits_match):
     directory, run = runner
     prs = json.dumps(
         [
@@ -150,17 +155,24 @@ def test_find_pr_fallback_requires_exact_head(runner):
             }
         ]
     )
-    result, _ = run(
+    result, calls = run(
         "find-pr",
         PR_NUMBER_PAYLOAD="",
         EVENT_HEAD_SHA="abc",
         EVENT_HEAD_REPOSITORY="example/fork",
         EVENT_HEAD_BRANCH="feature",
-        API_RESPONSE=prs,
+        API_RESPONSE=prs if commits_match else "[]",
+        OPEN_PRS=prs,
         VIEW_RESPONSE="contributor",
     )
     assert result.returncode == 0
     assert (directory / "output").read_text() == "number=42\nauthor=contributor\n"
+    open_lookups = [call for call in calls if "--method" in call]
+    if commits_match:
+        assert not open_lookups
+    else:
+        assert len(open_lookups) == 1
+        assert "head=example:feature" in open_lookups[0]
 
 
 def test_find_pr_rejects_mismatched_fork(runner):
@@ -190,3 +202,11 @@ def test_find_pr_rejects_mismatched_fork(runner):
     assert "No open PR found" in result.stdout
     assert not (directory / "output").exists()
     assert len(calls) == 2
+
+
+def test_retry_skips_when_previous_count_is_unavailable(runner):
+    directory, run = runner
+    result, calls = run("retry", VIEW_FAIL="1")
+    assert result.returncode == 0
+    assert (directory / "output").read_text() == "retried=false\n"
+    assert not any("-X" in call for call in calls)

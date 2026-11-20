@@ -25,7 +25,7 @@ def test_rejects_invalid_source_file(tmp_path, filename, content):
 
 
 def test_accepts_valid_source_files(tmp_path):
-    (tmp_path / "config.json").write_text('{"valid": true}')
+    (tmp_path / "config.json").write_text('{"valid": true, "number": -1.5}')
     (tmp_path / "query.graphql").write_text("query { viewer { login } }")
     result = subprocess.run(
         [sys.executable, str(ENTRY_POINT), "source-formats", str(tmp_path)],
@@ -33,3 +33,15 @@ def test_accepts_valid_source_files(tmp_path):
         text=True,
     )
     assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_rejects_nonstandard_json_numbers(tmp_path, constant):
+    (tmp_path / "config.json").write_text(f'{{"value": {constant}}}')
+    result = subprocess.run(
+        [sys.executable, str(ENTRY_POINT), "source-formats", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "config.json" in result.stdout

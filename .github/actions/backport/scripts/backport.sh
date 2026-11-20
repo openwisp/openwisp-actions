@@ -34,8 +34,10 @@ else
   BODY="Backport of #$PR_NUMBER to \`$BRANCH\`."
   # The same backport may already be open under a branch with an older timestamp.
   BRANCH_PREFIX="backport/${PR_NUMBER}-to-${BRANCH}-"
-  EXISTING=$(gh pr list --base "$BRANCH" --state open --json number,headRefName \
-    --jq ".[] | select(.headRefName | startswith(\"${BRANCH_PREFIX}\")) | .number" | head -1)
+  # Stop if the lookup fails. An API error is not evidence that no backport exists.
+  OPEN_PRS=$(gh pr list --base "$BRANCH" --state open --json number,headRefName)
+  EXISTING=$(jq -r --arg prefix "$BRANCH_PREFIX" \
+    'first(.[] | select(.headRefName | startswith($prefix)) | .number)' <<< "$OPEN_PRS")
   if [ -n "$EXISTING" ]; then
     echo "Backport PR #$EXISTING already exists"
     gh pr comment "$PR_NUMBER" --body "Backport to \`$BRANCH\` already exists: #$EXISTING"
@@ -68,7 +70,10 @@ if [ "$CHERRY_PICK_STATUS" -eq 0 ]; then
     echo "- **Target Branch**: $BRANCH"
     echo "- **Backport Branch**: $BACKPORT_BRANCH"
   } >> "$GITHUB_STEP_SUMMARY"
-# An already-applied change leaves no staged differences, unlike an unresolved conflict.
+# Git leaves CHERRY_PICK_HEAD on an empty pick, but not when it rejects the commit itself.
+elif ! git rev-parse --verify --quiet CHERRY_PICK_HEAD >/dev/null; then
+  echo "::error::Could not cherry-pick $SHA onto $BRANCH"
+  exit 1
 elif git diff --cached --quiet; then
   echo "Commit $SHA appears to already be in $BRANCH (empty cherry-pick)"
   git cherry-pick --abort || true

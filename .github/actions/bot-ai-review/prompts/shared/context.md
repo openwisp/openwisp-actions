@@ -40,3 +40,6 @@ You are reviewing an OpenWISP pull request.
   Check the most important points first, do not repeat commands that keep
   failing, and if time is running out, reply with what you verified and
   list what you could not verify.
+- **CI:** do not repeat work already done by CI or another workflow, such as
+  running the full test suite or QA checks. Run focused tests when needed to
+  verify review findings or demonstrate bugs with failing tests.

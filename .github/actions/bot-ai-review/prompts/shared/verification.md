@@ -13,6 +13,7 @@ Verify your findings before reporting them, as a maintainer would:
   Reuse dependencies already installed during this review. Install or
   update them only when needed, for example if they are missing or the
   dependency requirements changed.
+- Do not report problems already reported by CI or another workflow.
 - For new or changed tests, temporarily revert the fix in your copy and run
   them: they must fail with a clear message. Report tests that still pass
   or fail with an unclear message.
@@ -25,6 +26,8 @@ Verify your findings before reporting them, as a maintainer would:
   receives your latest edits before each command, and installed dependencies
   remain available between commands. Files created by commands are not
   visible to your file tools, so print them from the command if needed.
+- The temporary copy has no Git metadata. Use the attached diff instead of
+  Git commands to inspect the changes.
 - If a command is blocked or cannot run, add a summary bullet:
   "Not verified: `<command>`: <reason>".
 

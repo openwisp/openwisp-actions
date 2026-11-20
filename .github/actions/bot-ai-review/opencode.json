@@ -40,7 +40,14 @@
       "which google-chrome": "allow",
       "which chromedriver": "allow",
       "which chromium chromium-browser google-chrome chromedriver": "allow",
-      "yarn --version": "allow"
+      "yarn --version": "allow",
+      "./tests/manage.py test*": "allow",
+      "SAMPLE_APP=1 ./tests/manage.py test*": "allow",
+      "ls *": "allow",
+      "ls *>*": "deny",
+      "ls *<*": "deny",
+      "ls *$*": "deny",
+      "ls *`*": "deny"
     }
   }
 }

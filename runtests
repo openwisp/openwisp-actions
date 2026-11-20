@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# Run all action test suites, including those added by future actions.
+# Run action tests and the custom inline-script check tests.
 
-python -m pytest .github/actions/*/tests -q
+python -m pytest .github/actions/*/tests qa/test_lean_yaml.py -q

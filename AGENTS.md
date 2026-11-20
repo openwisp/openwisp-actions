@@ -45,7 +45,7 @@ If instructions conflict, CI configuration wins first, then repository documenta
 - Keep test success output quiet. Capture and assert expected stdout or stderr when code under test writes output.
 - Run `./run-qa-checks` to check Python formatting, import ordering, linting, and documentation formatting.
 - Run `zizmor --offline --persona=auditor .` after GitHub Actions security changes.
-- Test core action and workflow behavior. Do not add automated tests for repository QA tools or lint rules; verify those by running the tools directly.
+- Prefer established QA tools. Add basic tests for custom QA logic that cannot be replaced by those tools.
 
 ## GitHub Actions Security
 

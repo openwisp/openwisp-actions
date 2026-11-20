@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
-# Use the shared OpenWISP formatters, including Prettier when available.
-exec openwisp-qa-format
+# Use the shared formatter and apply Prettier to the GraphQL files it skips.
+set -e
+openwisp-qa-format
+prettier --write '.github/**/*.graphql'

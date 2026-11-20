@@ -8,9 +8,8 @@ openwisp-qa-check \
       --skip-checkmakemigrations \
       --skip-checkcommit
 
-python qa/scripts/__main__.py line-length
-python qa/scripts/__main__.py inline-run
-python qa/scripts/__main__.py source-formats
+python qa/enforce_lean_yaml.py
+prettier --check '.github/**/*.graphql'
 yamllint -s .
 
 zizmor --offline --persona=auditor .
@@ -33,4 +32,8 @@ while IFS= read -r -d '' file; do
       fi
 done < <(find . \( -name .git -o -name .venv -o -name venv -o -name env -o -name .tox \
       -o -name node_modules -o -name __pycache__ \) -prune -o -type f -print0)
+awk '
+      length($0) > 110 { print FILENAME ":" FNR ": line exceeds 110 characters"; failed=1 }
+      END { exit failed }
+' "${shell_scripts[@]}"
 shellcheck "${shell_scripts[@]}"

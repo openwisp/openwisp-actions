@@ -1,5 +1,8 @@
 """Limit executable inline workflow and composite action blocks."""
 
+import sys
+from pathlib import Path
+
 import yaml
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 
@@ -53,3 +56,8 @@ def check_inline_runs(root):
                 )
                 failed = True
     return int(failed)
+
+
+if __name__ == "__main__":
+    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()
+    sys.exit(check_inline_runs(root))

@@ -33,21 +33,21 @@ P --> X
 
 ## Jobs and entry points
 
-| Job           | Step                                     | Entry point                | Calls                                                          | Writes                                               |
-| ------------- | ---------------------------------------- | -------------------------- | -------------------------------------------------------------- | ---------------------------------------------------- |
-| `gate`        | Parse command                            | `parse-command.sh`         |                                                                | `stage`, `model` outputs                             |
-| `gate`        | Read pull request                        | `read-pull-request.sh`     |                                                                | `head_sha`, `base_sha` outputs                       |
-| `gate`        | Fetch shared AI guidance                 | `fetch-shared-guidance.sh` | `lib/shared_guidance.py`                                       | `shared-guidance/guidance.md`, `notes.md` (artifact) |
-| `acknowledge` | Add eyes reaction                        | inline `gh api`            |                                                                | `reaction_id` output                                 |
-| `review`      | Fetch pull request as data               | `fetch-pull-request.sh`    | `lib/guidance.py`                                              | `/tmp/ai-review/pr/`, `pr.diff`, `guidance.md`       |
-| `review`      | Fetch threat model (`/review` only)      | `fetch-threat-model.sh`    |                                                                | `threat-model.rst`                                   |
-| `review`      | Prepare sandbox user                     | `prepare-sandbox.sh`       | installs `sandbox/sandbox-shell.sh` and `sandbox/sync-copy.sh` | `reviewer` user                                      |
-| `review`      | Configure provider credentials           | `configure-credentials.sh` |                                                                | `$RUNNER_TEMP/opencode-data/`                        |
-| `review`      | Fetch pull request discussion            | `fetch-history.sh`         | `lib/history.graphql`, `lib/history.py`, `lib/context.py`      | `history.json`, `context.json`                       |
-| `review`      | Run review                               | `run-review.sh`            | `lib/build-prompt.sh`, `lib/extract_findings.py`               | `findings.json` (artifact)                           |
-| `publish`     | Install Crit (only with inline comments) | `install-crit.sh`          |                                                                | `crit`                                               |
-| `publish`     | Publish review                           | `publish.sh`               |                                                                | the review on GitHub                                 |
-| `react`       | Replace eyes reaction                    | `update-reaction.sh`       |                                                                | the final reaction                                   |
+| Job           | Step                                     | Entry point                | Calls                                                                      | Writes                                               |
+| ------------- | ---------------------------------------- | -------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `gate`        | Parse command                            | `parse-command.sh`         |                                                                            | `stage`, `model`, `effort` outputs                   |
+| `gate`        | Read pull request                        | `read-pull-request.sh`     |                                                                            | `head_sha`, `base_sha` outputs                       |
+| `gate`        | Fetch shared AI guidance                 | `fetch-shared-guidance.sh` | `lib/shared_guidance.py`                                                   | `shared-guidance/guidance.md`, `notes.md` (artifact) |
+| `acknowledge` | Add eyes reaction                        | inline `gh api`            |                                                                            | `reaction_id` output                                 |
+| `review`      | Fetch pull request as data               | `fetch-pull-request.sh`    | `lib/guidance.py`                                                          | `/tmp/ai-review/pr/`, `pr.diff`, `guidance.md`       |
+| `review`      | Fetch threat model (`/review` only)      | `fetch-threat-model.sh`    |                                                                            | `threat-model.rst`                                   |
+| `review`      | Prepare sandbox user                     | `prepare-sandbox.sh`       | installs `sandbox/sandbox-shell.sh` and `sandbox/sync-copy.sh`             | `reviewer` user                                      |
+| `review`      | Configure provider credentials           | `configure-credentials.sh` |                                                                            | `$RUNNER_TEMP/opencode-data/`                        |
+| `review`      | Fetch pull request discussion            | `fetch-history.sh`         | `lib/history.graphql`, `lib/history.py`, `lib/context.py`                  | `history.json`, `context.json`                       |
+| `review`      | Run review                               | `run-review.sh`            | `lib/build-prompt.sh`, `lib/extract_findings.py`, `lib/validate_effort.py` | `findings.json` (artifact)                           |
+| `publish`     | Install Crit (only with inline comments) | `install-crit.sh`          |                                                                            | `crit`                                               |
+| `publish`     | Publish review                           | `publish.sh`               |                                                                            | the review on GitHub                                 |
+| `react`       | Replace eyes reaction                    | `update-reaction.sh`       |                                                                            | the final reaction                                   |
 
 Unless stated otherwise, the review data is stored in `/tmp/ai-review/data/`,
 outside the pull request copy in `/tmp/ai-review/pr/`.

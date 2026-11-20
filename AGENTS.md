@@ -8,12 +8,13 @@
 - Composite actions and Python automation scripts are in `.github/actions/`.
 - Tests are maintained with the action implementation they cover in `.github/actions/`.
 - `README.rst` documents public workflow and action interfaces.
+- Repository-wide QA tools live in `qa/`.
 
 ## Source of Truth
 
 - Use `.github/workflows/ci.yml` for CI commands and supported Python versions.
-- Use `README.rst` for public action and reusable-workflow interfaces.
-- Use `CONTRIBUTING.rst` for local setup and validation commands.
+- Use `README.rst` for public interfaces, local setup, and validation commands.
+- Keep `CONTRIBUTING.rst` as a link to the general OpenWISP Contribution Guidelines.
 - Use the GitHub issue and pull request templates when creating GitHub content.
 
 If instructions conflict, CI configuration wins first, then repository documentation, and this file is supplemental.
@@ -36,7 +37,7 @@ If instructions conflict, CI configuration wins first, then repository documenta
 - Keep imports at the top of Python files unless a deferred import is necessary.
 - Prefer short, precise names that rely on their nearest meaningful scope.
 - Add comments only when they explain a non-obvious reason, security constraint, compatibility requirement, or side effect.
-- Update `README.rst` and `CONTRIBUTING.rst` when public interfaces, setup steps, validation commands, or supported versions change.
+- Update `README.rst` when public interfaces, setup steps, validation commands, or supported versions change.
 
 ## Testing and QA
 
@@ -44,6 +45,7 @@ If instructions conflict, CI configuration wins first, then repository documenta
 - Keep test success output quiet. Capture and assert expected stdout or stderr when code under test writes output.
 - Run `./run-qa-checks` to check Python formatting, import ordering, linting, and documentation formatting.
 - Run `zizmor --offline --persona=auditor .` after GitHub Actions security changes.
+- Test core action and workflow behavior. Do not add automated tests for repository QA tools or lint rules; verify those by running the tools directly.
 
 ## GitHub Actions Security
 
@@ -65,6 +67,8 @@ and where to find its tests.
   flat `scripts/` directory. For example, the backport workflow calls `__main__.sh parse`
   to read a request and `__main__.sh backport` to apply it. The names point directly to
   `parse.sh` and `backport.sh`.
+- Keep simple implementations in the entry point. For example, `retry-command` has
+  one retry loop and does not need a separate helper or dispatcher.
 - Put tests in `.github/actions/<name>/tests/`, next to `scripts/`. For example,
   `.github/actions/backport/tests/test_backport.py` runs the entry point directly.
   Use YAML tests for workflow wiring that script tests cannot cover.
@@ -74,4 +78,4 @@ and where to find its tests.
 
 ## Troubleshooting
 
-If `README.rst` or `CONTRIBUTING.rst` differs from CI, use `.github/workflows/ci.yml` for verification and report the exact discrepancy. Do not change documentation unless the change caused the divergence or the user explicitly requests it.
+If `README.rst` differs from CI, use `.github/workflows/ci.yml` for verification and report the exact discrepancy. Do not change documentation unless the change caused the divergence or the user explicitly requests it.

@@ -34,21 +34,21 @@ P --> X
 Each subcommand runs the same-named shell script in `scripts/`. For example,
 `bash scripts/__main__.sh parse-command` runs `scripts/parse-command.sh`.
 
-| Job | Subcommand | Result |
-| --- | --- | --- |
-| `gate` | `parse-command` | Review stage, model, and optional reasoning effort outputs |
-| `gate` | `read-pull-request` | Head and base commit outputs |
-| `gate` | `fetch-shared-guidance` | `shared-guidance/guidance.md` and `notes.md` artifact |
-| `acknowledge` | Inline `gh api` call | Eyes reaction and its ID |
-| `review` | `fetch-pull-request` | PR copy, `pr.diff`, and `guidance.md` |
-| `review` | `fetch-threat-model` | `threat-model.rst` for `/review` only |
-| `review` | `prepare-sandbox` | `reviewer` user and sandbox scripts |
-| `review` | `configure-credentials` | Provider credentials under `$RUNNER_TEMP/opencode-data/` |
-| `review` | `fetch-history` | `history.json` and `context.json` |
-| `review` | `run-review` | `findings.json` artifact |
-| `publish` | `install-crit` | Installs Crit only when the review has inline comments |
-| `publish` | `publish` | GitHub review and dismissal of superseded change requests |
-| `react` | `update-reaction` | Final reaction when the eyes reaction was added |
+| Job           | Subcommand              | Result                                                     |
+| ------------- | ----------------------- | ---------------------------------------------------------- |
+| `gate`        | `parse-command`         | Review stage, model, and optional reasoning effort outputs |
+| `gate`        | `read-pull-request`     | Head and base commit outputs                               |
+| `gate`        | `fetch-shared-guidance` | `shared-guidance/guidance.md` and `notes.md` artifact      |
+| `acknowledge` | Inline `gh api` call    | Eyes reaction and its ID                                   |
+| `review`      | `fetch-pull-request`    | PR copy, `pr.diff`, and `guidance.md`                      |
+| `review`      | `fetch-threat-model`    | `threat-model.rst` for `/review` only                      |
+| `review`      | `prepare-sandbox`       | `reviewer` user and sandbox scripts                        |
+| `review`      | `configure-credentials` | Provider credentials under `$RUNNER_TEMP/opencode-data/`   |
+| `review`      | `fetch-history`         | `history.json` and `context.json`                          |
+| `review`      | `run-review`            | `findings.json` artifact                                   |
+| `publish`     | `install-crit`          | Installs Crit only when the review has inline comments     |
+| `publish`     | `publish`               | GitHub review and dismissal of superseded change requests  |
+| `react`       | `update-reaction`       | Final reaction when the eyes reaction was added            |
 
 The review job keeps the diff and other model inputs in `/tmp/ai-review/data/`,
 outside the PR copy in `/tmp/ai-review/pr/`. It writes `findings.json` under
@@ -76,7 +76,7 @@ outside the PR copy in `/tmp/ai-review/pr/`. It writes `findings.json` under
 
 ## Local checks
 
-For local checks and dependencies, see [Local Development](../../../CONTRIBUTING.rst#local-development).
+For local checks and dependencies, see [Development](../../../README.rst#development).
 To run just the review tests from the repository root:
 
 ```shell

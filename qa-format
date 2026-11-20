@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Use the shared OpenWISP formatters, including Prettier when available.
+exec openwisp-qa-format

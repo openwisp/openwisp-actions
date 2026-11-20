@@ -3,17 +3,14 @@
 set -e
 
 openwisp-qa-check \
+      --jslinter \
       --skip-checkmigrations \
       --skip-checkmakemigrations \
       --skip-checkcommit
 
-# Explicitly include hidden action directories in Python checks.
-isort --check-only --diff .github
-black --check .github
-flake8 .github
-python .github/actions/qa/scripts/__main__.py line-length
-python .github/actions/qa/scripts/__main__.py inline-run
-python .github/actions/qa/scripts/__main__.py source-formats
+python qa/scripts/__main__.py line-length
+python qa/scripts/__main__.py inline-run
+python qa/scripts/__main__.py source-formats
 yamllint -s .
 
 zizmor --offline --persona=auditor .

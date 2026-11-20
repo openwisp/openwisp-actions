@@ -919,8 +919,18 @@ when the variable is unset.
 Development
 ===========
 
-See `Local Development <CONTRIBUTING.rst#local-development>`_ to set up
-the Python environment and run tests and QA checks.
+From the repository root on Linux, with Bash, Git, jq, rsync, flock,
+OpenSSL, and Prettier available:
+
+.. code-block:: shell
+
+    python3.13 -m venv .venv
+    source .venv/bin/activate
+    python -m pip install -r requirements-test.txt
+    ./run-qa-checks
+    ./runtests
+
+Run ``./qa-format`` to apply the shared OpenWISP formatting before QA.
 
 Contributing
 ============

@@ -36,7 +36,7 @@ Each subcommand runs the same-named shell script in `scripts/`. For example,
 
 | Job | Subcommand | Result |
 | --- | --- | --- |
-| `gate` | `parse-command` | Review stage and model outputs |
+| `gate` | `parse-command` | Review stage, model, and optional reasoning effort outputs |
 | `gate` | `read-pull-request` | Head and base commit outputs |
 | `gate` | `fetch-shared-guidance` | `shared-guidance/guidance.md` and `notes.md` artifact |
 | `acknowledge` | Inline `gh api` call | Eyes reaction and its ID |

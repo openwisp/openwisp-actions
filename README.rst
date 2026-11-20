@@ -865,6 +865,12 @@ The provider and models come from these Actions variables:
 - ``AI_REVIEW1_GENERAL_MODEL``: the model for ``/review``.
 - ``AI_REVIEW2_SECURITY_MODEL``: the model for ``/security-review``.
 - ``AI_REVIEW3_FINAL_MODEL``: the model for ``/final-review``.
+- ``AI_REVIEW1_GENERAL_EFFORT``: optional reasoning effort for
+  ``/review``.
+- ``AI_REVIEW2_SECURITY_EFFORT``: optional reasoning effort for
+  ``/security-review``.
+- ``AI_REVIEW3_FINAL_EFFORT``: optional reasoning effort for
+  ``/final-review``.
 
 Set them as organization variables to apply to all repositories. A
 repository variable with the same name overrides the organization one,
@@ -873,6 +879,18 @@ provider or the model of a review is unset, the review fails with an error
 and the comment gets a confused reaction. With ``github-copilot``, pass
 the Copilot token as the ``OPENCODE_AUTH`` secret. Each review states the
 provider and model it used.
+
+Effort values are OpenCode model variants. Leave an effort variable unset
+to use the current OpenCode and provider defaults. The highest available
+value may be ``high``, ``xhigh`` or ``max``, depending on the provider and
+model. To check, run ``opencode models <provider> --verbose`` with that
+provider configured and look for the model's ``variants``. See the
+`OpenCode model variants documentation
+<https://opencode.ai/docs/models/#variants>`_. An unsupported effort
+causes the review to fail rather than silently using the default. To find
+the configured effort, check the repository's Actions variables, then the
+organization variables. The review does not report the effective effort
+when the variable is unset.
 
 **Usage Example**
 

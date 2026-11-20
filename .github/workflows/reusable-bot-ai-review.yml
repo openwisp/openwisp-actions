@@ -29,6 +29,7 @@ jobs:
       model: ${{ steps.command.outputs.model }}
       head_sha: ${{ steps.pr.outputs.head_sha }}
       base_sha: ${{ steps.pr.outputs.base_sha }}
+      effort: ${{ steps.command.outputs.effort }}
     steps:
       - &trusted_checkout
         name: Checkout reusable workflow
@@ -47,6 +48,9 @@ jobs:
           GENERAL_MODEL: ${{ vars.AI_REVIEW1_GENERAL_MODEL }}
           SECURITY_MODEL: ${{ vars.AI_REVIEW2_SECURITY_MODEL }}
           FINAL_MODEL: ${{ vars.AI_REVIEW3_FINAL_MODEL }}
+          GENERAL_EFFORT: ${{ vars.AI_REVIEW1_GENERAL_EFFORT }}
+          SECURITY_EFFORT: ${{ vars.AI_REVIEW2_SECURITY_EFFORT }}
+          FINAL_EFFORT: ${{ vars.AI_REVIEW3_FINAL_EFFORT }}
         run: bash trusted_scripts/.github/actions/bot-ai-review/scripts/__main__.sh parse-command
 
       - name: Generate read-only app token
@@ -201,6 +205,7 @@ jobs:
         env:
           MODEL: ${{ needs.gate.outputs.model }}
           STAGE: ${{ needs.gate.outputs.stage }}
+          EFFORT: ${{ needs.gate.outputs.effort }}
         run: bash trusted_scripts/.github/actions/bot-ai-review/scripts/__main__.sh run-review
 
       - name: Upload findings

@@ -43,7 +43,48 @@ class TestRunReview(unittest.TestCase):
             args = f.read().splitlines()
         self.assertIn(f"{root}/data/guidance.md", args)
 
-    def run_review(self, event, status=0, guidance=False):
+    def test_passes_valid_effort_and_omits_unset_effort(self):
+        event = {"type": "text", "part": {"text": "not JSON"}}
+        for effort in ("", "xhigh"):
+            with self.subTest(effort=effort):
+                root, result = self.run_review(event, effort=effort)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with open(os.path.join(root, "args")) as f:
+                    args = f.read().splitlines()
+                if effort:
+                    index = args.index("--variant")
+                    self.assertEqual(args[index + 1], effort)
+                else:
+                    self.assertNotIn("--variant", args)
+
+    def test_rejects_unsupported_effort_before_running_review(self):
+        event = {"type": "text", "part": {"text": "not JSON"}}
+        root, result = self.run_review(event, effort="max")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(os.path.join(root, "args")))
+        self.assertFalse(os.path.exists(os.path.join(root, "findings.json")))
+
+    def test_rejects_missing_or_invalid_model_metadata(self):
+        event = {"type": "text", "part": {"text": "not JSON"}}
+        for metadata in ('other/model\n{"variants":{"xhigh":{}}}', "provider/model\n{"):
+            with self.subTest(metadata=metadata):
+                root, result = self.run_review(event, effort="xhigh", metadata=metadata)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(os.path.exists(os.path.join(root, "args")))
+
+    def test_finds_variants_for_selected_model_in_provider_catalog(self):
+        event = {"type": "text", "part": {"text": "not JSON"}}
+        metadata = (
+            'provider/other\n{"variants": {"high": {}}}\n'
+            'provider/model\n{\n  "variants": {"xhigh": {}}\n}\n'
+            'provider/last\n{"variants": {}}\n'
+        )
+        root, result = self.run_review(event, effort="xhigh", metadata=metadata)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(os.path.join(root, "args")) as f:
+            self.assertIn("--variant\nxhigh\n", f.read())
+
+    def run_review(self, event, status=0, guidance=False, effort="", metadata=None):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = directory.name
@@ -62,7 +103,10 @@ class TestRunReview(unittest.TestCase):
             f.write(
                 "#!/bin/sh\n"
                 "if [ \"$1\" = debug ]; then echo '[]'; exit 0; fi\n"
-                'if [ "$1" = models ]; then exit 0; fi\n'
+                'if [ "$1" = models ]; then\n'
+                '  if [ "${3:-}" = --verbose ]; then printf "%s\\n" "$MODEL_METADATA"; fi\n'
+                "  exit 0\n"
+                "fi\n"
                 'printf \'%s\\n\' "$@" >"$RUNNER_TEMP/args"\n'
                 "printf '%s\\n' \"$EVENT\"\n"
                 'exit "$MODEL_STATUS"\n'
@@ -75,6 +119,8 @@ class TestRunReview(unittest.TestCase):
             "PR_DIR": f"{root}/pr",
             "DATA_DIR": f"{root}/data",
             "MODEL": "provider/model",
+            "EFFORT": effort,
+            "MODEL_METADATA": metadata or 'provider/model\n{"variants":{"xhigh":{}}}',
             "STAGE": "final-review",
             "EVENT": json.dumps(event),
             "MODEL_STATUS": str(status),

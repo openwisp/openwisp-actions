@@ -22,6 +22,12 @@ if (cd "$PR_DIR" && opencode debug skill --pure) \
 fi
 
 opencode models "${MODEL%%/*}" --refresh || true
+VARIANT=()
+if [ -n "${EFFORT:-}" ]; then
+  opencode models "${MODEL%%/*}" --verbose |
+    python3 "$DIR/validate_effort.py" "$MODEL" "$EFFORT"
+  VARIANT=(--variant "$EFFORT")
+fi
 chmod a-w "$DATA_DIR"/*
 FILES=(--file "$DATA_DIR/pr.diff")
 if { [ "$STAGE" = review ] || [ "$STAGE" = final-review ]; } && [ -s "$DATA_DIR/guidance.md" ]; then
@@ -36,7 +42,7 @@ PROMPT=$("$DIR/build-prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
   "$RUNNER_TEMP/shared-guidance/guidance.md")
 STATUS=0
 timeout --kill-after=30s "${REVIEW_MINUTES}m" opencode run "$PROMPT" --pure --format json \
-  --model "$MODEL" --dir "$PR_DIR" "${FILES[@]}" </dev/null >"$EVENTS" || STATUS=$?
+  --model "$MODEL" --dir "$PR_DIR" "${VARIANT[@]}" "${FILES[@]}" </dev/null >"$EVENTS" || STATUS=$?
 if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
   echo "::warning::The review hit the $REVIEW_MINUTES-minute limit"
 fi

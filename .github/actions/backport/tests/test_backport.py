@@ -63,7 +63,9 @@ def test_backport_pr_metadata(
     gh.write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, sys\n"
-        "if sys.argv[1] == 'api':\n"
+        "if sys.argv[1:3] == ['api', '--method']:\n"
+        "    print('[[]]')\n"
+        "elif sys.argv[1] == 'api':\n"
         "    print(os.environ['PR_DATA'])\n"
         "elif sys.argv[1:3] == ['pr', 'create']:\n"
         "    with open(os.environ['PR_OUTPUT'], 'w') as output:\n"
@@ -191,11 +193,14 @@ def test_backport_failure_paths(tmp_path, scenario):
     gh = tmp_path / "gh"
     gh.write_text(
         "#!/bin/sh\n"
-        'if [ "$1" = api ]; then\n'
-        '  printf \'%s\\n\' \'{"number":42,"title":"Source"}\'\n'
-        "elif [ \"$1 $2\" = 'pr list' ]; then\n"
+        'if [ "$1 $2" = "api --method" ]; then\n'
+        '  [ "$3 $4 $5" = "GET --paginate --slurp" ] || exit 3\n'
+        '  [ "$6" = "repos/example/repo/pulls" ] || exit 3\n'
+        '  [ "$7 $8 $9 ${10}" = "-f state=open -f base=1.3" ] || exit 3\n'
         '  [ "$FAIL_LOOKUP" != 1 ] || exit 1\n'
         '  printf "%s\\n" "$OPEN_PRS"\n'
+        'elif [ "$1" = api ]; then\n'
+        '  printf \'%s\\n\' \'{"number":42,"title":"Source"}\'\n'
         "elif [ \"$1 $2\" = 'pr create' ]; then\n"
         '  touch "$CREATE_ATTEMPT"\n'
         "  exit 1\n"
@@ -219,10 +224,10 @@ def test_backport_failure_paths(tmp_path, scenario):
         "FAIL_LOOKUP": str(int(scenario == "lookup_failure")),
         "CREATE_ATTEMPT": str(tmp_path / "create-attempt"),
         "OPEN_PRS": (
-            '[{"number":9,"headRefName":"unrelated"},'
-            '{"number":51,"headRefName":"backport/42-to-1.3-123"}]'
+            '[[{"number":9,"head":{"ref":"unrelated"}}],'
+            '[{"number":51,"head":{"ref":"backport/42-to-1.3-123"}}]]'
             if scenario == "existing_pr"
-            else "[]"
+            else "[[]]"
         ),
     }
     result = subprocess.run(

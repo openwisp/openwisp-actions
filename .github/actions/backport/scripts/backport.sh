@@ -35,9 +35,11 @@ else
   # The same backport may already be open under a branch with an older timestamp.
   BRANCH_PREFIX="backport/${PR_NUMBER}-to-${BRANCH}-"
   # Stop if the lookup fails. An API error is not evidence that no backport exists.
-  OPEN_PRS=$(gh pr list --base "$BRANCH" --state open --json number,headRefName)
+  # The existing backport may be older than the first page of open PRs.
+  OPEN_PRS=$(gh api --method GET --paginate --slurp "repos/$REPO/pulls" \
+    -f state=open -f "base=$BRANCH" -F per_page=100)
   EXISTING=$(jq -r --arg prefix "$BRANCH_PREFIX" \
-    'first(.[] | select(.headRefName | startswith($prefix)) | .number)' <<< "$OPEN_PRS")
+    'first(.[][] | select(.head.ref | startswith($prefix)) | .number)' <<< "$OPEN_PRS")
   if [ -n "$EXISTING" ]; then
     echo "Backport PR #$EXISTING already exists"
     gh pr comment "$PR_NUMBER" --body "Backport to \`$BRANCH\` already exists: #$EXISTING"

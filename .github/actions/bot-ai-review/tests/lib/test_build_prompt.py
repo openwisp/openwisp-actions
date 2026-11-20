@@ -3,8 +3,8 @@ import subprocess
 import tempfile
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "scripts", "build-prompt.sh")
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SCRIPT = os.path.join(ROOT, "scripts", "lib", "build-prompt.sh")
 PROMPTS = os.path.join(ROOT, "prompts")
 
 
@@ -27,17 +27,21 @@ class TestBuildPrompt(unittest.TestCase):
 
     def test_starts_with_shared_context_and_fills_in_the_limit(self):
         for stage, prompt in (
-            ("review", "1-review.md"),
-            ("security-review", "2-security-review.md"),
-            ("final-review", "3-final-review.md"),
+            ("review", "stages/1-review.md"),
+            ("security-review", "stages/2-security-review.md"),
+            ("final-review", "stages/3-final-review.md"),
         ):
             with self.subTest(stage=stage):
                 output = self.build(stage)
-                shared = read("shared-context.md").replace("{{REVIEW_MINUTES}}", "50")
+                shared = read("shared/context.md").replace("{{REVIEW_MINUTES}}", "50")
                 self.assertTrue(output.startswith(shared))
                 self.assertIn("stopped after 50 minutes", output)
                 self.assertNotIn("{{", output)
-                parts = [read(prompt), "Shared guidance.\n", read("verification.md")]
+                parts = [
+                    read(prompt),
+                    "Shared guidance.\n",
+                    read("shared/verification.md"),
+                ]
                 self.assertTrue(output.endswith("".join(parts)))
 
     def test_uses_the_given_limit(self):

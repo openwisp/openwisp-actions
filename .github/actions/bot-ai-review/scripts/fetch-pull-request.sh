@@ -8,7 +8,7 @@ git worktree add --detach "$PR_DIR" "$HEAD_SHA"
 rm "$PR_DIR/.git"
 mkdir -p "$DATA_DIR"
 git diff "$BASE_SHA...$HEAD_SHA" >"$DATA_DIR/pr.diff"
-python3 "$DIR/guidance.py" "$BASE_SHA" "$HEAD_SHA" >"$DATA_DIR/guidance.md"
+python3 "$DIR/lib/guidance.py" "$BASE_SHA" "$HEAD_SHA" >"$DATA_DIR/guidance.md"
 find "$PR_DIR" -type l -delete
 find "$PR_DIR" \( -name .opencode -o -name opencode.json -o -name opencode.jsonc \
   -o -name AGENTS.md -o -name CLAUDE.md -o -name CONTEXT.md \) -prune -exec rm -rf {} +

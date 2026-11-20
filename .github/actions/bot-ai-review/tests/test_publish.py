@@ -181,7 +181,7 @@ class TestPublish(unittest.TestCase):
                 result = subprocess.run(
                     [
                         sys.executable,
-                        os.path.join(SCRIPTS, "extract_findings.py"),
+                        os.path.join(SCRIPTS, "lib", "extract_findings.py"),
                         output,
                         diff,
                         stage,
@@ -215,7 +215,7 @@ class TestPublish(unittest.TestCase):
             result = subprocess.run(
                 [
                     sys.executable,
-                    os.path.join(SCRIPTS, "extract_findings.py"),
+                    os.path.join(SCRIPTS, "lib", "extract_findings.py"),
                     output,
                     diff,
                     "final-review",

@@ -8,4 +8,4 @@ openwisp-qa-check \
 
 zizmor --offline --persona=auditor .
 
-shellcheck .github/actions/*/scripts/*.sh
+shellcheck .github/actions/*/scripts/*.sh .github/actions/*/scripts/*/*.sh

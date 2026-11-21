@@ -667,8 +667,8 @@ secrets. The second workflow executes via ``workflow_run`` once the first
 completes: it runs in the context of the base repository, has full access
 to secrets, and is the one that generates and posts the changelog comment.
 
-The trigger and runner can check out a pinned revision of
-``openwisp-actions`` and use the scripts in
+The trigger and runner check out a pinned revision of ``openwisp-actions``
+and use the scripts in
 ``.github/actions/bot-changelog-generator/caller/``. The generator itself
 is in ``.github/actions/bot-changelog-generator/shared/`` and is also used
 by the composite action. Update the pinned revision and script paths
@@ -726,15 +726,22 @@ workflow metadata.
             github.event.review.author_association == 'MEMBER' ||
             github.event.review.author_association == 'COLLABORATOR')
         runs-on: ubuntu-latest
+        permissions:
+          contents: read
         steps:
+          - name: Checkout pinned changelog scripts
+            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+            with:
+              repository: openwisp/openwisp-actions
+              ref: 6662a6219e006a640af0d82644448e91b51009ed # master
+              path: openwisp-actions
+              persist-credentials: false
+
           - name: Check for noteworthy PR
             id: check
             env:
               PR_TITLE: ${{ github.event.pull_request.title }}
-            run: |
-              if echo "$PR_TITLE" | grep -qiE '^\[(feature|fix|change!?)\]'; then
-                echo "has_noteworthy=true" >> $GITHUB_OUTPUT
-              fi
+            run: bash openwisp-actions/.github/actions/bot-changelog-generator/caller/check_title.sh
 
           - name: Save PR metadata
             if: steps.check.outputs.has_noteworthy == 'true'
@@ -751,7 +758,9 @@ workflow metadata.
               retention-days: 1
 
 The runner workflow is triggered after the trigger workflow completes. It
-retrieves the PR metadata and calls the reusable changelog workflow.
+validates the metadata against the triggering run and checks that an
+eligible reviewer approved the current PR head. Only then does it prepare
+the approved diff and generate a changelog entry using secrets.
 
 **2. Changelog Bot Runner**
 (``.github/workflows/bot-changelog-runner.yml``)
@@ -766,25 +775,39 @@ retrieves the PR metadata and calls the reusable changelog workflow.
         types:
           - completed
 
-    permissions:
-      actions: read
+    permissions: {}
 
     jobs:
       fetch-metadata:
         runs-on: ubuntu-latest
         if: >
           github.repository == 'openwisp/your-repo' &&
+          github.event.workflow_run.name == 'Changelog Bot Trigger' &&
+          github.event.workflow_run.event == 'pull_request_review' &&
           github.event.workflow_run.conclusion == 'success'
         permissions:
           actions: read
+          contents: read
+          pull-requests: read
         outputs:
           pr_number: ${{ steps.metadata.outputs.pr_number }}
+          head_sha: ${{ steps.approval.outputs.head_sha }}
+          base_sha: ${{ steps.approval.outputs.base_sha }}
         steps:
+          - name: Checkout pinned changelog scripts
+            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+            with:
+              repository: openwisp/openwisp-actions
+              ref: 6662a6219e006a640af0d82644448e91b51009ed # master
+              path: openwisp-actions
+              persist-credentials: false
+
           - name: Download PR metadata
             id: download
             uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
             with:
               name: changelog-metadata
+              path: ${{ runner.temp }}/changelog-metadata
               github-token: ${{ secrets.GITHUB_TOKEN }}
               run-id: ${{ github.event.workflow_run.id }}
             continue-on-error: true
@@ -792,30 +815,94 @@ retrieves the PR metadata and calls the reusable changelog workflow.
           - name: Read PR metadata
             if: steps.download.outcome == 'success'
             id: metadata
-            run: |
-              PR_NUMBER=$(cat pr_number)
-              if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
-                echo "::error::Invalid PR number: $PR_NUMBER"
-                exit 1
-              fi
-              echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            env:
+              ARTIFACT_DIR: ${{ runner.temp }}/changelog-metadata
+            run: bash openwisp-actions/.github/actions/bot-changelog-generator/caller/read_metadata.sh
+
+          - name: Verify triggering pull request
+            if: steps.download.outcome == 'success'
+            id: association
+            env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+              PR_NUMBER: ${{ steps.metadata.outputs.pr_number }}
+              REPOSITORY: ${{ github.repository }}
+            run: bash openwisp-actions/.github/actions/bot-changelog-generator/caller/verify_association.sh
+
+          - name: Verify current eligible approval
+            if: steps.download.outcome == 'success'
+            id: approval
+            env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              EXPECTED_HEAD_SHA: ${{ steps.association.outputs.head_sha }}
+              PR_NUMBER: ${{ steps.metadata.outputs.pr_number }}
+              REPOSITORY: ${{ github.repository }}
+            run: bash openwisp-actions/.github/actions/bot-changelog-generator/caller/verify_approval.sh
 
       changelog:
         needs: fetch-metadata
         if: >
           github.repository == 'openwisp/your-repo' &&
-          needs.fetch-metadata.outputs.pr_number != ''
+          needs.fetch-metadata.outputs.pr_number != '' &&
+          needs.fetch-metadata.outputs.head_sha != '' &&
+          needs.fetch-metadata.outputs.base_sha != ''
+        concurrency:
+          group: changelog-runner-${{ github.repository }}-${{ needs.fetch-metadata.outputs.pr_number }}
+          cancel-in-progress: true
+        runs-on: ubuntu-latest
         permissions:
           contents: read
-          pull-requests: write
-          issues: write
-        uses: openwisp/openwisp-actions/.github/workflows/reusable-bot-changelog.yml@0.1.0
-        with:
-          pr_number: ${{ needs.fetch-metadata.outputs.pr_number }}
-        secrets:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENWISP_BOT_APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
-          OPENWISP_BOT_PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
+        steps:
+          - name: Checkout trusted repository revision
+            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+            with:
+              ref: ${{ github.sha }}
+              persist-credentials: false
+
+          - name: Checkout pinned changelog generator
+            uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+            with:
+              repository: openwisp/openwisp-actions
+              ref: 6662a6219e006a640af0d82644448e91b51009ed # master
+              path: openwisp-actions
+              persist-credentials: false
+
+          - name: Prepare approved pull request diff
+            env:
+              APPROVED_HEAD_SHA: ${{ needs.fetch-metadata.outputs.head_sha }}
+              APPROVED_BASE_SHA: ${{ needs.fetch-metadata.outputs.base_sha }}
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              REPOSITORY: ${{ github.repository }}
+            run: bash openwisp-actions/.github/actions/bot-changelog-generator/caller/prepare_diff.sh
+
+          - name: Set up Python
+            uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+            with:
+              python-version: "3.13"
+
+          - name: Install changelog generator dependencies
+            env:
+              ACTION_PATH: ${{ github.workspace }}/openwisp-actions/.github/actions/bot-changelog-generator
+            run: pip install -r "$ACTION_PATH/../../../requirements.txt"
+
+          - name: Generate App Token
+            id: app-token
+            uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+            with:
+              app-id: ${{ secrets.OPENWISP_BOT_APP_ID }}
+              private-key: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
+              permission-issues: read
+              permission-pull-requests: write
+
+          - name: Generate changelog
+            env:
+              ACTION_PATH: ${{ github.workspace }}/openwisp-actions/.github/actions/bot-changelog-generator
+              GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+              GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+              GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+              PR_NUMBER: ${{ needs.fetch-metadata.outputs.pr_number }}
+              REPO_NAME: ${{ github.repository }}
+            run: PATH="$RUNNER_TEMP:$PATH" python "$ACTION_PATH/shared/generate_changelog.py"
 
 **Note:**
 

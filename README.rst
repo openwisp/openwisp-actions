@@ -44,7 +44,8 @@ Retry Command
 This GitHub Action retries a shell command if it fails. It is useful for
 handling flaky tests in CI/CD pipelines.
 
-**Inputs**
+Inputs
+++++++
 
 - ``command`` (required): The shell command to run.
 - ``max_attempts`` (optional): The number of retry attempts. Defaults to
@@ -52,7 +53,8 @@ handling flaky tests in CI/CD pipelines.
 - ``delay_seconds`` (optional): The delay between retries in seconds.
   Defaults to ``5``.
 
-**Usage Example**
+Usage Example
++++++++++++++
 
 You can use this action in your workflow as follows:
 
@@ -84,10 +86,11 @@ You can use this action in your workflow as follows:
 This example retries the ``./runtests.py --parallel`` command up to 5
 times with a 30 second delay between attempts.
 
-**Note:**
+.. note::
 
-If the command continues to fail after the specified number of attempts,
-the action will exit with a non-zero status, causing the workflow to fail.
+    If the command continues to fail after the specified number of
+    attempts, the action will exit with a non-zero status, causing the
+    workflow to fail.
 
 Auto-Assignment Bot
 ~~~~~~~~~~~~~~~~~~~
@@ -122,7 +125,8 @@ OpenWISP repositories. The bot provides the following features:
   ``Dependabot`` PRs and PRs whose titles begin with ``[release]`` or
   ``[backport]`` do not receive the label.
 
-**How Stale PR Detection Works**
+How Stale PR Detection Works
+++++++++++++++++++++++++++++
 
 The Stale PR job runs daily. For each open PR:
 
@@ -153,7 +157,8 @@ The Stale PR job runs daily. For each open PR:
 
    Each stage posts at most once per blocking review cycle.
 
-**Secrets**
+Secrets
++++++++
 
 These secrets let the reusable workflow mint two GitHub App tokens with
 ``actions/create-github-app-token``. A repository-scoped write token is
@@ -171,22 +176,25 @@ The OpenWISP Bot needs **Projects: Read** permission at the org level to
 check issue project assignments via GraphQL. Without it, valid external
 PRs might be wrongly flagged as ``invalid``.
 
-**Setup for Other Repositories**
+Setup for Other Repositories
+++++++++++++++++++++++++++++
 
 To enable the auto-assignment bot in another OpenWISP repository, you must
 create four workflow files under ``.github/workflows/`` that call the
 reusable GitHub Workflow. This reusable workflow automatically handles
 token generation, environment setup, and executing the bot scripts.
 
-**Note:**
+.. note::
 
-Each caller workflow must declare its own ``permissions`` block. GitHub
-Actions reusable workflows inherit permissions from the caller, so the
-reusable workflow cannot set them on its own.
+    Each caller workflow must declare its own ``permissions`` block.
+    GitHub Actions reusable workflows inherit permissions from the caller,
+    so the reusable workflow cannot set them on its own.
 
 Create the following workflow files in your repository.
 
-**1. Issue Assignment Bot**
+1. Issue Assignment Bot
+^^^^^^^^^^^^^^^^^^^^^^^
+
 (``.github/workflows/bot-autoassign-issue.yml``)
 
 .. code-block:: yaml
@@ -213,7 +221,9 @@ Create the following workflow files in your repository.
           OPENWISP_BOT_APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
           OPENWISP_BOT_PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
 
-**2. PR Issue Link**
+2. PR Issue Link
+^^^^^^^^^^^^^^^^
+
 (``.github/workflows/bot-autoassign-pr-issue-link.yml``)
 
 .. code-block:: yaml
@@ -241,7 +251,10 @@ Create the following workflow files in your repository.
           OPENWISP_BOT_APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
           OPENWISP_BOT_PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
 
-**3. PR Reopen** (``.github/workflows/bot-autoassign-pr-reopen.yml``)
+3. PR Reopen
+^^^^^^^^^^^^
+
+``.github/workflows/bot-autoassign-pr-reopen.yml``
 
 .. code-block:: yaml
 
@@ -283,15 +296,18 @@ Create the following workflow files in your repository.
           OPENWISP_BOT_APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
           OPENWISP_BOT_PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
 
-**Note:**
+.. note::
 
-Both jobs use ``bot_command: pr_reopen``. The ``pr_reopen`` command
-dispatches to ``PRReopenBot`` on ``pull_request_target`` events (to
-reassign issues when a PR is reopened) and to ``PRActivityBot`` on
-``issue_comment`` events (to remove the stale label when the PR author
-comments on their stale PR).
+    Both jobs use ``bot_command: pr_reopen``. The ``pr_reopen`` command
+    dispatches to ``PRReopenBot`` on ``pull_request_target`` events (to
+    reassign issues when a PR is reopened) and to ``PRActivityBot`` on
+    ``issue_comment`` events (to remove the stale label when the PR author
+    comments on their stale PR).
 
-**4. Stale PR** (``.github/workflows/bot-autoassign-stale-pr.yml``)
+4. Stale PR
+^^^^^^^^^^^
+
+``.github/workflows/bot-autoassign-stale-pr.yml``
 
 .. code-block:: yaml
 
@@ -317,7 +333,8 @@ comments on their stale PR).
           OPENWISP_BOT_APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
           OPENWISP_BOT_PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
 
-**Overriding the bot username**
+Overriding the bot username
++++++++++++++++++++++++++++
 
 All four caller workflows accept an optional ``bot_username`` input
 (default ``openwisp-companion``). The bot uses it to detect mentions of
@@ -387,15 +404,15 @@ example:
         secrets:
           private_key: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
 
-**Note:**
+.. note::
 
-The caller must pass the ``client_id`` input and ``private_key`` secret
-for the `OpenWISP Companion bot
-<https://github.com/apps/openwisp-companion>`_, normally mapped from its
-``OPENWISP_BOT_CLIENT_ID`` organization variable and
-``OPENWISP_BOT_PRIVATE_KEY`` secret. The OpenWISP GitHub App needs
-**Contents: write** and **Workflows: write** permissions: the latter is
-needed when a synchronized commit changes ``.github/workflows/``.
+    The caller must pass the ``client_id`` input and ``private_key``
+    secret for the `OpenWISP Companion bot
+    <https://github.com/apps/openwisp-companion>`_, normally mapped from
+    its ``OPENWISP_BOT_CLIENT_ID`` organization variable and
+    ``OPENWISP_BOT_PRIVATE_KEY`` secret. The OpenWISP GitHub App needs
+    **Contents: write** and **Workflows: write** permissions: the latter
+    is needed when a synchronized commit changes ``.github/workflows/``.
 
 The workflow creates a missing version branch or fast-forwards an existing
 branch to the triggering ``master`` commit. It never rewrites history or
@@ -499,11 +516,15 @@ code. It includes changed lines from supported source files alongside the
 raw error logs, then posts a concise summary and an actionable remediation
 plan directly to the Pull Request.
 
-Pass ``base_sha: ${{ github.event.workflow_run.pull_requests[0].base.sha
-}}`` to analyze the failed run's pull request diff. When it is
-unavailable, the reusable workflow falls back to the current pull request
-base. If it cannot fetch a diff, analysis continues without source
-context.
+Pass the failed run's base SHA to analyze its pull request diff:
+
+.. code-block:: yaml
+
+    base_sha: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
+
+When it is unavailable, the reusable workflow falls back to the current
+pull request base. If it cannot fetch a diff, analysis continues without
+source context.
 
 When the bot detects that all failures are transient (e.g., network
 errors, browser crashes, Coveralls flakiness), it automatically re-runs
@@ -514,7 +535,8 @@ enabled. If the permission is not granted (e.g., in repositories that
 haven't updated their caller workflow yet), the auto-retry is skipped
 gracefully and the full analysis is posted instead.
 
-**Retry mode configuration**
+Retry mode configuration
+++++++++++++++++++++++++
 
 The bot supports a configurable retry classifier mode via
 ``CI_RETRY_MODE`` (repository or organization variable). Accepted values:
@@ -525,7 +547,8 @@ The bot supports a configurable retry classifier mode via
   LLM call is skipped when the heuristic already matched.
 - Any other value (including empty/typo): heuristic-only retry.
 
-**Model configuration**
+Model configuration
++++++++++++++++++++
 
 By default the bot uses ``gemini-3.5-flash-lite`` with minimal thinking.
 To use a different Gemini 3.5 or later model, set the ``GEMINI_MODEL``
@@ -539,7 +562,8 @@ after your primary test suite concludes. It features strict
 cross-repository concurrency locks and token limits to prevent PR spam on
 rapid, consecutive commits.
 
-**Usage Example**
+Usage Example
++++++++++++++
 
 Set up a caller workflow in your repository (e.g.,
 ``.github/workflows/bot-ci-failure.yml``) that monitors your primary CI
@@ -674,14 +698,16 @@ is in ``.github/actions/bot-changelog-generator/shared/`` and is also used
 by the composite action. Update the pinned revision and script paths
 together when adopting changes to these scripts.
 
-**Secrets**
+Secrets
++++++++
 
 - ``GEMINI_API_KEY`` (required): Google Gemini API key.
 - ``OPENWISP_BOT_APP_ID`` (required): OpenWISP Bot GitHub App ID.
 - ``OPENWISP_BOT_PRIVATE_KEY`` (required): OpenWISP Bot GitHub App private
   key.
 
-**Model configuration**
+Model configuration
++++++++++++++++++++
 
 The changelog bot uses ``gemini-3.5-flash-lite`` with minimal thinking by
 default and honors the same ``GEMINI_MODEL`` repository or organization
@@ -694,7 +720,8 @@ validation, wrapping long body lines while preserving issue footers such
 as ``Closes #123``. This avoids spending extra Gemini requests on
 formatting issues that can be fixed deterministically.
 
-**Setup for Other Repositories**
+Setup for Other Repositories
+++++++++++++++++++++++++++++
 
 To enable the changelog bot in any OpenWISP repository, create the
 following two workflow files under ``.github/workflows/``.
@@ -704,7 +731,9 @@ approved by a maintainer and its title starts with ``[feature]``,
 ``[fix]``, ``[change]``, or ``[change!]``, it stores the PR number as
 workflow metadata.
 
-**1. Changelog Bot Trigger**
+1. Changelog Bot Trigger
+^^^^^^^^^^^^^^^^^^^^^^^^
+
 (``.github/workflows/bot-changelog-trigger.yml``)
 
 .. code-block:: yaml
@@ -762,7 +791,9 @@ validates the metadata against the triggering run and checks that an
 eligible reviewer approved the current PR head. Only then does it prepare
 the approved diff and generate a changelog entry using secrets.
 
-**2. Changelog Bot Runner**
+2. Changelog Bot Runner
+^^^^^^^^^^^^^^^^^^^^^^^
+
 (``.github/workflows/bot-changelog-runner.yml``)
 
 .. code-block:: yaml
@@ -904,17 +935,17 @@ the approved diff and generate a changelog entry using secrets.
               REPO_NAME: ${{ github.repository }}
             run: PATH="$RUNNER_TEMP:$PATH" python "$ACTION_PATH/shared/generate_changelog.py"
 
-**Note:**
+.. note::
 
-The ``name`` field in the trigger workflow must be exactly ``Changelog Bot
-Trigger``. The runner watches for this name via ``workflow_run``. Changing
-it will silently break the connection between the two workflows.
+    The trigger workflow name must be ``Changelog Bot Trigger``. The
+    runner watches for this name via ``workflow_run``. Changing it will
+    silently break the connection between the two workflows.
 
-Both ``bot-changelog-trigger.yml`` and ``bot-changelog-runner.yml`` must
-be committed to the **default branch** of the repository. GitHub only
-activates ``workflow_run`` listeners that exist on the default branch:
-adding the runner only to a feature branch will cause it to silently do
-nothing.
+    Both ``bot-changelog-trigger.yml`` and ``bot-changelog-runner.yml``
+    must be committed to the **default branch** of the repository. GitHub
+    only activates ``workflow_run`` listeners that exist on the default
+    branch: adding the runner only to a feature branch will cause it to
+    silently do nothing.
 
 On-Demand AI Review
 ~~~~~~~~~~~~~~~~~~~
@@ -957,7 +988,8 @@ the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
 missing, the review notes it in its summary. Each review is limited to 50
 minutes, and the model is told about the limit so it replies in time.
 
-**Review flow**
+Review flow
++++++++++++
 
 The `reusable AI review workflow
 <.github/workflows/reusable-bot-ai-review.yml>`_ runs these jobs:
@@ -978,7 +1010,8 @@ The final reaction is updated after the review and publish jobs finish, if
 the acknowledgement added an eyes reaction. The review job passes its
 findings to the publish job as an artifact.
 
-**Implementation layout**
+Implementation layout
++++++++++++++++++++++
 
 The implementation is in ``.github/actions/bot-ai-review/``:
 
@@ -993,7 +1026,8 @@ The review job keeps the PR diff and other model inputs in
 It writes ``findings.json`` under ``$RUNNER_TEMP`` and uploads it for the
 publish job.
 
-**Prompt and sandbox**
+Prompt and sandbox
+++++++++++++++++++
 
 The review prompt combines these parts in order:
 
@@ -1015,7 +1049,8 @@ To run the AI review tests from the repository root:
 
     python -m pytest .github/actions/bot-ai-review/tests -q
 
-**Model configuration**
+Model configuration
++++++++++++++++++++
 
 The provider and models come from these Actions variables:
 
@@ -1050,7 +1085,8 @@ the configured effort, check the repository's Actions variables, then the
 organization variables. The review does not report the effective effort
 when the variable is unset.
 
-**Usage Example**
+Usage Example
++++++++++++++
 
 .. code-block:: yaml
 

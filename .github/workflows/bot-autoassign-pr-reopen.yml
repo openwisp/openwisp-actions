@@ -1,12 +1,16 @@
 name: PR Reopen Reassignment
 on:
-  pull_request_target: # zizmor: ignore[dangerous-triggers] Required to update stale fork PRs; the workflow runs trusted bot code only.
+  # Stale fork PR updates run trusted bot code only.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [reopened]
-  issue_comment: # zizmor: ignore[dangerous-triggers] Required for PR-author recovery comments; the bot verifies the author before writes.
+  # The bot verifies the author of recovery comments before writing.
+  issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
 permissions: {}
 concurrency:
-  group: bot-autoassign-pr-reopen-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: >-
+    ${{ format('bot-autoassign-pr-reopen-{0}-{1}', github.repository,
+    github.event.pull_request.number || github.event.issue.number) }}
   cancel-in-progress: true
 jobs:
   reassign-on-reopen:

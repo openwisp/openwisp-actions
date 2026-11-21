@@ -1,11 +1,39 @@
 #!/bin/bash
+# Run the same quality checks locally and in CI.
 set -e
 
 openwisp-qa-check \
+      --jslinter \
       --skip-checkmigrations \
       --skip-checkmakemigrations \
       --skip-checkcommit
 
+python qa/enforce_lean_yaml.py
+prettier --check '.github/**/*.graphql'
+yamllint -s .
+
 zizmor --offline --persona=auditor .
 
-shellcheck .github/actions/*/scripts/*.sh .github/actions/*/scripts/*/*.sh
+# Actionlint 1.7.12 predates these GitHub Actions syntax and context features.
+actionlint \
+      -ignore 'reusable workflow call "\$/.*" at "uses" is not following' \
+      -ignore 'specifying action "\$/.*" in invalid format' \
+      -ignore 'property "workflow_(repository|sha)" is not defined' \
+      -ignore 'unexpected key "queue" for "concurrency" section'
+
+# Discover shell scripts by extension or shebang so root entry points are checked too.
+shell_scripts=()
+# NUL separators keep filenames with spaces or newlines intact.
+while IFS= read -r -d '' file; do
+      # read can reach EOF on an empty file or a final line without a newline.
+      IFS= read -r first_line < "$file" || true
+      if [[ "$file" == *.sh || "$first_line" =~ ^#!.*(ba)?sh([[:space:]]|$) ]]; then
+            shell_scripts+=("$file")
+      fi
+done < <(find . \( -name .git -o -name .venv -o -name venv -o -name env -o -name .tox \
+      -o -name node_modules -o -name __pycache__ \) -prune -o -type f -print0)
+awk '
+      length($0) > 110 { print FILENAME ":" FNR ": line exceeds 110 characters"; failed=1 }
+      END { exit failed }
+' "${shell_scripts[@]}"
+shellcheck "${shell_scripts[@]}"

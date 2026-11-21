@@ -58,7 +58,7 @@ jobs:
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          path: trusted_scripts
+          path: openwisp-actions
           persist-credentials: false
 
       - name: Fetch PR Diff
@@ -69,76 +69,25 @@ jobs:
           HEAD_SHA: ${{ inputs.head_sha }}
           PR_NUM: ${{ inputs.pr_number }}
           REPO: ${{ inputs.base_repo }}
-        run: |
-          set -eo pipefail
-          : > pr.diff
-          if [ -z "$BASE_SHA" ]; then
-            BASE_SHA=$(GH_TOKEN="$GH_APP_TOKEN" gh pr view "$PR_NUM" --repo "$REPO" --json baseRefOid --jq '.baseRefOid') || true
-          fi
-          if [ -z "$BASE_SHA" ] || ! gh api -H "Accept: application/vnd.github.diff" \
-            "repos/$REPO/compare/$BASE_SHA...$HEAD_SHA" > pr.diff; then
-            : > pr.diff
-            echo "::warning::Could not fetch the PR diff; continuing without code context."
-          fi
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch_diff.sh
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: trusted_scripts/requirements.txt
+          cache-dependency-path: openwisp-actions/requirements.txt
 
       - name: Install Tools
         run: |
-          pip install -r trusted_scripts/requirements.txt
+          pip install -r openwisp-actions/requirements.txt
 
       - name: Fetch Failed Steps Logs
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           RUN_ID: ${{ inputs.run_id }}
           REPO: ${{ inputs.base_repo }}
-        run: |
-          # Fetches failed job logs via the GitHub API (with pagination and error guards).
-          # Uses AWK to isolate the exact failure by slicing logs strictly between ##[group] and ##[error] markers.
-          set -eo pipefail
-          echo "Getting failed jobs for run $RUN_ID..."
-          if ! JOB_IDS=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs" \
-            -q '.jobs[] | select(.conclusion=="failure") | .id'); then
-            echo "Could not fetch failed jobs for run $RUN_ID." > failed_logs.txt
-            exit 0
-          fi
-          if [ -z "$JOB_IDS" ]; then
-            echo "No failed jobs found." > failed_logs.txt
-            exit 0
-          fi
-          : > failed_logs.txt
-          for JOB_ID in $JOB_IDS; do
-            echo "Processing job $JOB_ID"
-            if ! gh api --allow-escape-sequences "repos/$REPO/actions/jobs/$JOB_ID/logs" > job_logs.txt; then
-              echo "Could not fetch logs for job $JOB_ID; skipping." >> failed_logs.txt
-              continue
-            fi
-            {
-              echo "===== JOB $JOB_ID ====="
-              awk '
-              /##\[group\]/ {
-                  buffer = $0 "\n"
-                  next
-              }
-              {
-                  buffer = buffer $0 "\n"
-                  if (/##\[error\]/) {
-                      printf "%s\n", buffer
-                      buffer = ""
-                  }
-              }
-              ' job_logs.txt
-              echo ""
-            } >> failed_logs.txt
-          done
-          if [ ! -s failed_logs.txt ] || ! grep -q "##\[error\]" failed_logs.txt; then
-            echo "Failed jobs found but logs unavailable." > failed_logs.txt
-          fi
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch_logs.sh
 
       - name: Run AI Analysis
         timeout-minutes: 5
@@ -149,8 +98,7 @@ jobs:
           COMMIT_SHA: ${{ inputs.head_sha }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           CI_RETRY_MODE: ${{ vars.CI_RETRY_MODE }}
-        run: |
-          python trusted_scripts/.github/actions/bot-ci-failure/analyze_failure.py > solution.md
+        run: python openwisp-actions/.github/actions/bot-ci-failure/reusable/analyze_failure.py > solution.md
 
       - name: Auto-retry transient failures
         id: retry
@@ -161,37 +109,7 @@ jobs:
           RUN_ID: ${{ inputs.run_id }}
           REPO: ${{ inputs.base_repo }}
           HEAD_SHA: ${{ inputs.head_sha }}
-        run: |
-          MAX_RETRIES=3
-          MARKER="<!-- ci-transient-retry $HEAD_SHA -->"
-          # Count previous retry comments for this specific commit.
-          # gh --jq does not support jq's --arg flag, so pipe through
-          # grep to count marker occurrences.
-          RETRY_COUNT=$(gh pr view "$PR_NUM" --repo "$REPO" --json comments \
-            --jq '.comments[].body' 2>/dev/null \
-            | grep -cF "$MARKER" || echo "0")
-          if ! [[ "$RETRY_COUNT" =~ ^[0-9]+$ ]]; then
-            RETRY_COUNT=0
-          fi
-          echo "Previous retries: $RETRY_COUNT"
-          if [ "$RETRY_COUNT" -ge "$MAX_RETRIES" ]; then
-            echo "Max retries ($MAX_RETRIES) reached; skipping."
-            echo "retried=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          NEXT=$((RETRY_COUNT + 1))
-          # Attempt to re-run failed jobs. This requires actions:write permission,
-          # which may not be granted in all caller workflows.
-          if gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs" 2>/dev/null; then
-            echo "retried=true" >> "$GITHUB_OUTPUT"
-            printf -v BODY '%s\n%s' \
-              "$MARKER" \
-              "The CI is failing due to transient infrastructure issues (not related to your code). I have restarted the failed jobs automatically ($NEXT/$MAX_RETRIES)."
-            gh pr comment "$PR_NUM" --repo "$REPO" --body "$BODY"
-          else
-            echo "::warning::Could not re-run failed jobs (missing actions:write permission?). Skipping auto-retry."
-            echo "retried=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/retry.sh
 
       - name: Post Comment
         if: steps.retry.outputs.retried != 'true'
@@ -199,13 +117,4 @@ jobs:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_NUM: ${{ inputs.pr_number }}
           REPO: ${{ inputs.base_repo }}
-        run: |
-          if [ ! -s solution.md ]; then
-            echo "AI analysis produced no output; skipping comment."
-            exit 0
-          fi
-          if ! grep -q "##\[error\]" failed_logs.txt 2>/dev/null; then
-            echo "No CI failures detected; skipping comment."
-            exit 0
-          fi
-          gh pr comment "$PR_NUM" --repo "$REPO" --body-file solution.md
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/post_comment.sh

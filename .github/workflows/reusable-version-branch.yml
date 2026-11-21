@@ -34,6 +34,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          path: caller
+          persist-credentials: false
+
+      - name: Checkout workflow scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: openwisp-actions
           persist-credentials: false
 
       - name: Set up Python
@@ -47,22 +56,16 @@ jobs:
 
       - name: Install package if required
         if: inputs.install_package
+        working-directory: caller
         run: |
           pip install .
 
       - name: Get version
         id: get_version
+        working-directory: caller
         env:
           MODULE_NAME: ${{ inputs.module_name }}
-        run: |
-          python - <<'PY'
-          import importlib
-          import os
-
-          version = importlib.import_module(os.environ["MODULE_NAME"]).VERSION
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"version={version[0]}.{version[1]}\n")
-          PY
+        run: python ../openwisp-actions/.github/actions/version-branch/reusable/version.py
 
   replicate:
     name: Replicate commits to version branch
@@ -79,23 +82,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          path: caller
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Checkout workflow scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: openwisp-actions
+          persist-credentials: false
+
       - name: Fast-forward version branch
-        run: |
-          if git show-ref --verify --quiet "refs/remotes/origin/$VERSION"; then
-            git fetch origin "$VERSION:refs/remotes/origin/$VERSION"
-            git checkout -B "$VERSION" "origin/$VERSION"
-            # Delayed runs are no-ops; divergence fails without rewriting history.
-            if ! git merge --ff-only "$GITHUB_SHA"; then
-              echo "::error::Version branch '$VERSION' has diverged from master. Follow the documented manual recovery procedure." >&2
-              exit 1
-            fi
-          else
-            # The normal push creates a missing remote version branch.
-            git checkout -b "$VERSION" "$GITHUB_SHA"
-          fi
+        working-directory: caller
+        run: bash ../openwisp-actions/.github/actions/version-branch/reusable/replicate.sh
 
       - name: Generate GitHub App Token
         id: generate-token
@@ -110,6 +111,7 @@ jobs:
           permission-workflows: write
 
       - name: Push version branch
+        working-directory: caller
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |

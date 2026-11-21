@@ -1,7 +1,10 @@
 # To get started with Dependabot version updates, you'll need to specify which
 # package ecosystems to update and where the package manifests are located.
 # Please see the documentation for all configuration options:
+# The upstream documentation URL cannot be split without breaking the link.
+# yamllint disable rule:line-length
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# yamllint enable rule:line-length
 
 version: 2
 updates:

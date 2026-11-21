@@ -6,9 +6,9 @@ import tempfile
 import unittest
 
 SCRIPTS = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reusable"
 )
-SCRIPT = os.path.join(SCRIPTS, "parse-command.sh")
+SCRIPT = os.path.join(SCRIPTS, "parse_command.sh")
 VARIABLES = {
     "PROVIDER": "provider",
     "GENERAL_MODEL": "general",
@@ -21,7 +21,7 @@ def parse(body, **overrides):
     with tempfile.NamedTemporaryFile("r", encoding="utf-8") as output:
         env = {"PATH": os.environ["PATH"], "BODY": body, "GITHUB_OUTPUT": output.name}
         env.update({k: v for k, v in {**VARIABLES, **overrides}.items() if v})
-        subprocess.run([SCRIPT], env=env, check=True, capture_output=True)
+        subprocess.run(["bash", SCRIPT], env=env, check=True, capture_output=True)
         return dict(line.split("=", 1) for line in output.read().splitlines())
 
 

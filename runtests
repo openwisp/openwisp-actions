@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-set -e
+# Run action tests and the custom inline-script check tests.
 
-python -m pytest \
-  .github/actions/bot-autoassign/tests \
-  .github/actions/bot-changelog-generator/test_generate_changelog.py \
-  .github/actions/bot-ci-failure/test_analyze_failure.py \
-  .github/actions/bot-ai-review/tests \
-  .github/actions/backport/test_backport.py \
-  -q
+python -m pytest .github/actions/*/tests qa/test_lean_yaml.py -q

@@ -1,9 +1,8 @@
 # On-demand AI review
 
-Scripts, prompts and configuration used by
-`.github/workflows/reusable-bot-ai-review.yml`. Usage and configuration are
-documented in the repository `README.rst`; this file explains how the
-pieces fit together.
+Start with the [AI review workflow](../../workflows/reusable-bot-ai-review.yml)
+to see the job sequence and scripts called by each step.
+For setup, commands, and model configuration, see [On-Demand AI Review](../../../README.rst#on-demand-ai-review).
 
 ## Flow
 
@@ -21,40 +20,40 @@ P --> X
 
 ## Layout
 
-- `scripts/`: entry points, each one run by a workflow step.
-- `scripts/lib/`: helpers called by the entry points.
-- `scripts/sandbox/`: scripts installed into the sandbox, used by the
-  model's shell commands.
+- `reusable/`: workflow step implementations and helpers, including scripts installed into the sandbox.
 - `prompts/shared/`: prompt parts used by every review.
 - `prompts/stages/`: the prompt of each review stage.
 - `opencode.json`: OpenCode configuration (tool permissions and allowed
   commands).
-- `tests/`, `tests/lib/`, `tests/sandbox/`: tests, mirroring `scripts/`.
+- `tests/`: tests for the review scripts.
 
-## Jobs and entry points
+## Jobs and scripts
 
-| Job           | Step                                     | Entry point                | Calls                                                                      | Writes                                               |
-| ------------- | ---------------------------------------- | -------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `gate`        | Parse command                            | `parse-command.sh`         |                                                                            | `stage`, `model`, `effort` outputs                   |
-| `gate`        | Read pull request                        | `read-pull-request.sh`     |                                                                            | `head_sha`, `base_sha` outputs                       |
-| `gate`        | Fetch shared AI guidance                 | `fetch-shared-guidance.sh` | `lib/shared_guidance.py`                                                   | `shared-guidance/guidance.md`, `notes.md` (artifact) |
-| `acknowledge` | Add eyes reaction                        | inline `gh api`            |                                                                            | `reaction_id` output                                 |
-| `review`      | Fetch pull request as data               | `fetch-pull-request.sh`    | `lib/guidance.py`                                                          | `/tmp/ai-review/pr/`, `pr.diff`, `guidance.md`       |
-| `review`      | Fetch threat model (`/review` only)      | `fetch-threat-model.sh`    |                                                                            | `threat-model.rst`                                   |
-| `review`      | Prepare sandbox user                     | `prepare-sandbox.sh`       | installs `sandbox/sandbox-shell.sh` and `sandbox/sync-copy.sh`             | `reviewer` user                                      |
-| `review`      | Configure provider credentials           | `configure-credentials.sh` |                                                                            | `$RUNNER_TEMP/opencode-data/`                        |
-| `review`      | Fetch pull request discussion            | `fetch-history.sh`         | `lib/history.graphql`, `lib/history.py`, `lib/context.py`                  | `history.json`, `context.json`                       |
-| `review`      | Run review                               | `run-review.sh`            | `lib/build-prompt.sh`, `lib/extract_findings.py`, `lib/validate_effort.py` | `findings.json` (artifact)                           |
-| `publish`     | Install Crit (only with inline comments) | `install-crit.sh`          |                                                                            | `crit`                                               |
-| `publish`     | Publish review                           | `publish.sh`               |                                                                            | the review on GitHub                                 |
-| `react`       | Replace eyes reaction                    | `update-reaction.sh`       |                                                                            | the final reaction                                   |
+The workflow calls the named scripts in `reusable/` directly.
 
-Unless stated otherwise, the review data is stored in `/tmp/ai-review/data/`,
-outside the pull request copy in `/tmp/ai-review/pr/`.
+| Job           | Script                  | Result                                                     |
+| ------------- | ----------------------- | ---------------------------------------------------------- |
+| `gate`        | `parse_command`         | Review stage, model, and optional reasoning effort outputs |
+| `gate`        | `read_pull_request`     | Head and base commit outputs                               |
+| `gate`        | `fetch_shared_guidance` | `shared-guidance/guidance.md` and `notes.md` artifact      |
+| `acknowledge` | Inline `gh api` call    | Eyes reaction and its ID                                   |
+| `review`      | `fetch_pull_request`    | PR copy, `pr.diff`, and `guidance.md`                      |
+| `review`      | `fetch_threat_model`    | `threat-model.rst` for `/review` only                      |
+| `review`      | `prepare_sandbox`       | `reviewer` user and sandbox scripts                        |
+| `review`      | `configure_credentials` | Provider credentials under `$RUNNER_TEMP/opencode-data/`   |
+| `review`      | `fetch_history`         | `history.json` and `context.json`                          |
+| `review`      | `run_review`            | `findings.json` artifact                                   |
+| `publish`     | `install_crit`          | Installs Crit only when the review has inline comments     |
+| `publish`     | `publish`               | GitHub review and dismissal of superseded change requests  |
+| `react`       | `update_reaction`       | Final reaction when the eyes reaction was added            |
+
+The review job keeps the diff and other model inputs in `/tmp/ai-review/data/`,
+outside the PR copy in `/tmp/ai-review/pr/`. It writes `findings.json` under
+`$RUNNER_TEMP`, then uploads it for the publish job.
 
 ## Prompt
 
-`lib/build-prompt.sh` joins the prompt in this order:
+`reusable/build_prompt.sh` joins the prompt in this order:
 
 1. `prompts/shared/context.md`, with the time limit filled in.
 2. `prompts/stages/<n>-<stage>.md`.
@@ -63,12 +62,20 @@ outside the pull request copy in `/tmp/ai-review/pr/`.
 
 ## Sandbox
 
-- Every shell command of the model runs through `sandbox-shell.sh` as the
+- Every shell command of the model runs through `sandbox_shell.sh` as the
   `reviewer` user, without `sudo`.
-- The model reads and edits the pull request in one copy, and commands run
-  in a second copy. Files created by the pull request's code, such as a
-  symlink to the credentials, stay in the second copy and can never be
-  opened by the model's file tools, which can read the credentials.
-- Before each command, `sync-copy.sh` copies the model's latest edits to
-  the second copy and removes the files it deleted, so commands always run
-  on the same code the model sees.
+- The model reads and edits `/tmp/ai-review/pr/`. Its shell commands run in
+  `/tmp/ai-review/run/`. The sync copies files only from the model's copy
+  to the command copy, so files generated by tests do not appear in the
+  model's copy.
+- Before each command, `sync_copy.sh` copies the model's edits to the command
+  copy and removes files deleted from the model's copy.
+
+## Local checks
+
+For local checks and dependencies, see [Development](../../../README.rst#development).
+To run just the review tests from the repository root:
+
+```shell
+python -m pytest .github/actions/bot-ai-review/tests -q
+```

@@ -2,8 +2,8 @@ import os
 import sys
 from unittest.mock import Mock, patch
 
-# Add the parent directory to path for importing bot modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Import implementation modules from the reusable workflow directory.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "reusable"))
 
 import pytest  # noqa: E402
 

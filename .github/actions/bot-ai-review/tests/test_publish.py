@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 SCRIPTS = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reusable"
 )
 SCRIPT = os.path.join(SCRIPTS, "publish.sh")
 HEAD_SHA = "a" * 40
@@ -91,7 +91,7 @@ def publish(
             "STAGE": stage,
             "MODEL": "provider/model",
         }
-        result = subprocess.run([SCRIPT], env=env, capture_output=True)
+        result = subprocess.run(["bash", SCRIPT], env=env, capture_output=True)
         with open(os.path.join(state, "log")) as f:
             log = f.read().splitlines()
         review = os.path.join(state, "review.json")
@@ -181,7 +181,7 @@ class TestPublish(unittest.TestCase):
                 result = subprocess.run(
                     [
                         sys.executable,
-                        os.path.join(SCRIPTS, "lib", "extract_findings.py"),
+                        os.path.join(SCRIPTS, "extract_findings.py"),
                         output,
                         diff,
                         stage,
@@ -215,7 +215,7 @@ class TestPublish(unittest.TestCase):
             result = subprocess.run(
                 [
                     sys.executable,
-                    os.path.join(SCRIPTS, "lib", "extract_findings.py"),
+                    os.path.join(SCRIPTS, "extract_findings.py"),
                     output,
                     diff,
                     "final-review",

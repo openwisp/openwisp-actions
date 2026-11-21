@@ -436,9 +436,9 @@ It supports two triggers:
 - **Comment**: Comment ``/backport X.Y`` on a merged PR (org members
   only).
 
-If the cherry-pick fails due to conflicts, the bot comments on the PR with
-manual resolution steps. If the target branch does not exist or the PR is
-not yet merged, the workflow exits safely without failing.
+When a cherry-pick conflicts and the commit came from a PR, the bot posts
+manual resolution steps on that PR. A missing target branch fails the
+backport job. The workflow skips requests for PRs that are not yet merged.
 
 .. code-block:: yaml
 
@@ -641,6 +641,14 @@ job:
           APP_ID: ${{ secrets.OPENWISP_BOT_APP_ID }}
           PRIVATE_KEY: ${{ secrets.OPENWISP_BOT_PRIVATE_KEY }}
 
+Instead of embedding the PR lookup in a caller workflow, a repository can
+check out a pinned revision of ``openwisp-actions`` and run
+``.github/actions/bot-ci-failure/caller/find_pr.sh``. Pass ``GH_TOKEN``,
+``REPO``, ``PR_NUMBER_PAYLOAD``, ``EVENT_HEAD_SHA``,
+``EVENT_HEAD_REPOSITORY``, and ``EVENT_HEAD_BRANCH`` as environment
+variables. The script writes ``number`` and ``author`` to
+``GITHUB_OUTPUT``.
+
 Changelog Bot
 ~~~~~~~~~~~~~
 
@@ -658,6 +666,13 @@ qualifies and uploads the PR number as an artifact, but requires no
 secrets. The second workflow executes via ``workflow_run`` once the first
 completes: it runs in the context of the base repository, has full access
 to secrets, and is the one that generates and posts the changelog comment.
+
+The trigger and runner can check out a pinned revision of
+``openwisp-actions`` and use the scripts in
+``.github/actions/bot-changelog-generator/caller/``. The generator itself
+is in ``.github/actions/bot-changelog-generator/shared/`` and is also used
+by the composite action. Update the pinned revision and script paths
+together when adopting changes to these scripts.
 
 **Secrets**
 
@@ -680,9 +695,6 @@ as ``Closes #123``. This avoids spending extra Gemini requests on
 formatting issues that can be fixed deterministically.
 
 **Setup for Other Repositories**
-
-To enable the changelog bot in any OpenWISP repository, create the
-following two workflow files.
 
 To enable the changelog bot in any OpenWISP repository, create the
 following two workflow files under ``.github/workflows/``.
@@ -857,8 +869,8 @@ the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
 <https://github.com/openwisp/openwisp-opencode-configs>`_; if a section is
 missing, the review notes it in its summary. Each review is limited to 50
 minutes, and the model is told about the limit so it replies in time. How
-the scripts and prompts fit together is described in
-.github/actions/bot-ai-review/README.md.
+the scripts and prompts fit together is described in the `AI review
+implementation guide <.github/actions/bot-ai-review/README.md>`_.
 
 **Model configuration**
 
@@ -922,42 +934,18 @@ when the variable is unset.
 Development
 ===========
 
-This repository requires Python 3.13, the version used in continuous
-integration.
-
-Clone the repository and create a virtual environment:
+From the repository root on Linux, with Bash, Git, jq, rsync, flock,
+OpenSSL, and Prettier available:
 
 .. code-block:: shell
 
-    git clone https://github.com/openwisp/openwisp-actions.git
-    cd openwisp-actions
-    python3.13 -m venv env
-    source env/bin/activate
-
-Install the runtime and development dependencies:
-
-.. code-block:: shell
-
-    pip install -r requirements.txt -r requirements-test.txt
-
-Run the test suite with:
-
-.. code-block:: shell
-
+    python3.13 -m venv .venv
+    source .venv/bin/activate
+    python -m pip install -r requirements-test.txt
+    ./run-qa-checks
     ./runtests
 
-Run formatting, linting, ReStructuredText, and GitHub Actions security
-checks with:
-
-.. code-block:: shell
-
-    ./run-qa-checks
-
-Format supported files before committing changes:
-
-.. code-block:: shell
-
-    openwisp-qa-format
+Run ``./qa-format`` to apply the shared OpenWISP formatting before QA.
 
 Contributing
 ============

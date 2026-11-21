@@ -1,6 +1,7 @@
 name: PR Issue Auto-Assignment
 on:
-  pull_request_target: # zizmor: ignore[dangerous-triggers] Required for issue assignment on fork PRs; the workflow runs trusted bot code only.
+  # Fork PR assignment runs trusted bot code only.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [opened, reopened, closed, edited, ready_for_review]
 permissions: {}
 concurrency:

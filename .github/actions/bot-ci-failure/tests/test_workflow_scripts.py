@@ -104,16 +104,22 @@ def test_fetch_logs_extracts_failure_sections(runner):
     assert "--allow-escape-sequences" in calls[1]
 
 
-@pytest.mark.parametrize("previous", [0, 3])
+@pytest.mark.parametrize("previous", [0, 1, 2, 3])
 def test_retry_respects_per_commit_limit(runner, previous):
     directory, run = runner
     marker = "<!-- ci-transient-retry head -->"
     result, calls = run("retry", VIEW_RESPONSE="\n".join([marker] * previous))
     assert result.returncode == 0
     output = (directory / "output").read_text()
-    assert output == f"retried={'true' if previous == 0 else 'false'}\n"
+    assert output == f"retried={'true' if previous < 3 else 'false'}\n"
     retry_calls = [call for call in calls if "-X" in call]
-    assert len(retry_calls) == (1 if previous == 0 else 0)
+    assert len(retry_calls) == (1 if previous < 3 else 0)
+    comments = [call for call in calls if call[1:3] == ["pr", "comment"]]
+    if previous < 3:
+        assert len(comments) == 1
+        assert f"({previous + 1}/3)" in comments[0][-1]
+    else:
+        assert not comments
 
 
 def test_post_comment_requires_failed_logs(runner):
@@ -211,3 +217,12 @@ def test_retry_skips_when_previous_count_is_unavailable(runner):
     assert result.returncode == 0
     assert (directory / "output").read_text() == "retried=false\n"
     assert not any("-X" in call for call in calls)
+
+
+def test_retry_reports_failed_rerun_without_notification(runner):
+    directory, run = runner
+    result, calls = run("retry", API_FAIL="1")
+    assert result.returncode == 0
+    assert (directory / "output").read_text() == "retried=false\n"
+    assert len([call for call in calls if "-X" in call]) == 1
+    assert not any(call[1:3] == ["pr", "comment"] for call in calls)

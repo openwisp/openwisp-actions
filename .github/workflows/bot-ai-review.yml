@@ -1,7 +1,7 @@
 name: AI Review
 
 on:
-  # Only organization members can request reviews, and PR content is read as data.
+  # Only organization members can request reviews; verification may run PR code in the sandbox.
   issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
 

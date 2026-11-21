@@ -72,7 +72,7 @@ def runner(tmp_path):
 
 def test_metadata_reads_regular_pr_number(runner):
     root, _, run = runner
-    result = run("read-metadata")
+    result = run("read_metadata")
     assert result.returncode == 0
     assert (root / "output").read_text() == "pr_number=42\n"
 
@@ -90,17 +90,17 @@ def test_metadata_rejects_untrusted_artifact_shapes(runner, invalid):
         number.write_text("1" * 17)
     else:
         number.write_text("42\nother")
-    result = run("read-metadata")
+    result = run("read_metadata")
     assert result.returncode != 0
     assert not (root / "output").exists()
 
 
 def test_approval_requires_matching_current_head(runner):
     root, _, run = runner
-    result = run("verify-approval")
+    result = run("verify_approval")
     assert result.returncode == 0
     assert (root / "output").read_text() == "head_sha=abc\nbase_sha=base\n"
-    result = run("verify-approval", EXPECTED_HEAD_SHA="old")
+    result = run("verify_approval", EXPECTED_HEAD_SHA="old")
     assert result.returncode != 0
     assert "head changed" in result.stdout
 
@@ -118,17 +118,17 @@ def test_approval_rejects_review_for_old_commit(runner):
             }
         ]
     ]
-    result = run("verify-approval", REVIEWS=json.dumps(reviews))
+    result = run("verify_approval", REVIEWS=json.dumps(reviews))
     assert result.returncode != 0
     assert "no current eligible approval" in result.stdout
 
 
 def test_association_rejects_changed_head_or_repository(runner):
     root, _, run = runner
-    result = run("verify-association")
+    result = run("verify_association")
     assert result.returncode == 0
     assert (root / "output").read_text() == "head_sha=abc\n"
-    result = run("verify-association", REPOSITORY="different/repo")
+    result = run("verify_association", REPOSITORY="different/repo")
     assert result.returncode != 0
     assert "does not match" in result.stdout
 
@@ -142,7 +142,7 @@ def test_prepare_diff_requires_complete_comparison(runner, complete):
         "files": [{}],
     }
     result = run(
-        "prepare-diff",
+        "prepare_diff",
         APPROVED_HEAD_SHA="a" * 40,
         APPROVED_BASE_SHA="b" * 40,
         RUNNER_TEMP=str(root),
@@ -171,7 +171,7 @@ def test_prepare_diff_fails_when_diff_fetch_fails(runner):
     root, _, run = runner
     comparison = {"total_commits": 0, "commits": [], "files": []}
     result = run(
-        "prepare-diff",
+        "prepare_diff",
         APPROVED_HEAD_SHA="a" * 40,
         APPROVED_BASE_SHA="b" * 40,
         RUNNER_TEMP=str(root),
@@ -215,7 +215,7 @@ def test_approval_uses_latest_eligible_decision_across_pages(
                 }
             ]
         )
-    result = run("verify-approval", REVIEWS=json.dumps(pages))
+    result = run("verify_approval", REVIEWS=json.dumps(pages))
     if allowed:
         assert result.returncode == 0, result.stderr
         assert (root / "output").read_text() == "head_sha=abc\nbase_sha=base\n"

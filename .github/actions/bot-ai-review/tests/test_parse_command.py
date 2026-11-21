@@ -8,7 +8,7 @@ import unittest
 SCRIPTS = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reusable"
 )
-SCRIPT = os.path.join(SCRIPTS, "parse-command.sh")
+SCRIPT = os.path.join(SCRIPTS, "parse_command.sh")
 VARIABLES = {
     "PROVIDER": "provider",
     "GENERAL_MODEL": "general",

@@ -46,7 +46,7 @@ jobs:
           EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           EVENT_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
           EVENT_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-        run: bash .github/actions/bot-ci-failure/caller/find-pr.sh
+        run: bash .github/actions/bot-ci-failure/caller/find_pr.sh
 
   call-ci-failure-bot:
     needs: find-pr

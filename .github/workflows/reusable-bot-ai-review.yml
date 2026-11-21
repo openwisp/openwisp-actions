@@ -51,7 +51,7 @@ jobs:
           GENERAL_EFFORT: ${{ vars.AI_REVIEW1_GENERAL_EFFORT }}
           SECURITY_EFFORT: ${{ vars.AI_REVIEW2_SECURITY_EFFORT }}
           FINAL_EFFORT: ${{ vars.AI_REVIEW3_FINAL_EFFORT }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/parse-command.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/parse_command.sh
 
       - name: Generate read-only app token
         if: steps.command.outputs.stage != ''
@@ -78,7 +78,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/read-pull-request.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/read_pull_request.sh
 
       - name: Generate shared guidance token
         if: steps.command.outputs.stage != ''
@@ -97,7 +97,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.guidance-token.outputs.token }}
           OWNER: ${{ github.repository_owner }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch-shared-guidance.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch_shared_guidance.sh
 
       - name: Upload shared AI guidance
         if: steps.command.outputs.stage != ''
@@ -168,11 +168,11 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
           BASE_SHA: ${{ needs.gate.outputs.base_sha }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch-pull-request.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch_pull_request.sh
 
       - name: Fetch threat model
         if: needs.gate.outputs.stage == 'review'
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch-threat-model.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch_threat_model.sh
 
       - name: Download shared AI guidance
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -181,7 +181,7 @@ jobs:
           path: ${{ runner.temp }}/shared-guidance
 
       - name: Prepare sandbox user
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/prepare-sandbox.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/prepare_sandbox.sh
 
       - name: Install OpenCode
         # The exact OpenCode release is pinned.
@@ -191,7 +191,7 @@ jobs:
         if: vars.OPENCODE_PROVIDER == 'github-copilot'
         env:
           OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/configure-credentials.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/configure_credentials.sh
 
       - name: Fetch pull request discussion
         env:
@@ -199,14 +199,14 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           NAME: ${{ github.event.repository.name }}
           PR_NUMBER: ${{ github.event.issue.number }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch-history.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/fetch_history.sh
 
       - name: Run review
         env:
           MODEL: ${{ needs.gate.outputs.model }}
           STAGE: ${{ needs.gate.outputs.stage }}
           EFFORT: ${{ needs.gate.outputs.effort }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/run-review.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/run_review.sh
 
       - name: Upload findings
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -249,7 +249,7 @@ jobs:
 
       - name: Install Crit
         if: steps.comments.outputs.present == 'true'
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/install-crit.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/install_crit.sh
 
       - name: Generate write app token
         id: app-token
@@ -296,4 +296,4 @@ jobs:
           REACTION_ID: ${{ needs.acknowledge.outputs.reaction_id }}
           REVIEW_RESULT: ${{ needs.review.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/update-reaction.sh
+        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/update_reaction.sh

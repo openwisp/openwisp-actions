@@ -19,5 +19,5 @@ gh api -H 'Accept: application/vnd.github.diff' "$COMPARE" > "$RUNNER_TEMP/chang
 # Match git log --oneline: newest commits first, with only the subject line.
 jq -r '.commits | reverse | .[] | "\(.sha[0:7]) \(.commit.message | split("\n")[0])"' \
   "$RUNNER_TEMP/changelog-comparison.json" > "$RUNNER_TEMP/changelog-generator.commits"
-cp "$(dirname "${BASH_SOURCE[0]}")/git-wrapper.sh" "$RUNNER_TEMP/git"
+cp "$(dirname "${BASH_SOURCE[0]}")/git_wrapper.sh" "$RUNNER_TEMP/git"
 chmod +x "$RUNNER_TEMP/git"

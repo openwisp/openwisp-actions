@@ -10,7 +10,7 @@ import unittest
 SCRIPTS = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reusable"
 )
-SCRIPT = os.path.join(SCRIPTS, "sync-copy.sh")
+SCRIPT = os.path.join(SCRIPTS, "sync_copy.sh")
 
 
 class TestSyncCopy(unittest.TestCase):

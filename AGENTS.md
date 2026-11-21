@@ -69,6 +69,7 @@ and where to find its tests.
   feature's `shared/` directory. Create these directories only where they are needed.
 - Put tests in `.github/actions/<name>/tests/` and run scripts directly in behavior tests.
   Use YAML tests for workflow wiring that script tests cannot cover.
+- When adding Python or Bash scripts used by caller or reusable workflows, use underscores (`_`) as separators in their filenames.
 - Limit inline `run:` blocks to five lines. Enforce this limit with a YAML-aware check.
 - Run yamllint with a maximum line length of 110 characters, actionlint, and appropriate linters for every maintained script language in CI.
 - Preserve permissions and trust boundaries. Execute reusable-workflow scripts from the workflow repository at `job.workflow_sha` and pass GitHub expressions through environment variables.

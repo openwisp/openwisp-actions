@@ -38,7 +38,7 @@ if [ "$STAGE" = review ]; then
 fi
 FILES+=(--file "$DATA_DIR/context.json" --file "$DATA_DIR/history.json")
 REVIEW_MINUTES=50
-PROMPT=$("$DIR/build-prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
+PROMPT=$("$DIR/build_prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
   "$RUNNER_TEMP/shared-guidance/guidance.md")
 STATUS=0
 timeout --kill-after=30s "${REVIEW_MINUTES}m" opencode run "$PROMPT" --pure --format json \

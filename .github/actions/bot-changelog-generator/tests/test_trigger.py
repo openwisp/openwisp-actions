@@ -23,7 +23,7 @@ ACTION_DIR = Path(__file__).resolve().parents[1]
 def test_noteworthy_title(tmp_path, title, expected):
     output = tmp_path / "output"
     result = subprocess.run(
-        ["bash", str(ACTION_DIR / "caller/check-title.sh")],
+        ["bash", str(ACTION_DIR / "caller/check_title.sh")],
         env=os.environ | {"PR_TITLE": title, "GITHUB_OUTPUT": str(output)},
         capture_output=True,
         text=True,

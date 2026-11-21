@@ -2,7 +2,7 @@
 
 Usage: history.py <directory>
 
-- Reads every page fetched by fetch-history.sh, so no discussion is left out.
+- Reads every page fetched by fetch_history.sh, so no discussion is left out.
 - Groups inline comments into threads with their resolved state.
 - Removes the prompts that review bots such as CodeRabbit add for AI
   agents, so the reviewer does not mistake them for prompt injection.

@@ -643,7 +643,7 @@ job:
 
 Instead of embedding the PR lookup in a caller workflow, a repository can
 check out a pinned revision of ``openwisp-actions`` and run
-``.github/actions/bot-ci-failure/caller/find-pr.sh``. Pass ``GH_TOKEN``,
+``.github/actions/bot-ci-failure/caller/find_pr.sh``. Pass ``GH_TOKEN``,
 ``REPO``, ``PR_NUMBER_PAYLOAD``, ``EVENT_HEAD_SHA``,
 ``EVENT_HEAD_REPOSITORY``, and ``EVENT_HEAD_BRANCH`` as environment
 variables. The script writes ``number`` and ``author`` to

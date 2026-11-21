@@ -48,7 +48,7 @@ def runner(tmp_path):
     }
 
     def run(operation, **values):
-        directory = "caller" if operation == "find-pr" else "reusable"
+        directory = "caller" if operation == "find_pr" else "reusable"
         result = subprocess.run(
             ["bash", str(ACTION_DIR / directory / f"{operation}.sh")],
             cwd=tmp_path,
@@ -67,7 +67,7 @@ def runner(tmp_path):
 
 def test_diff_falls_back_to_app_token_for_base(runner):
     directory, run = runner
-    result, calls = run("fetch-diff", VIEW_RESPONSE="base", API_RESPONSE="diff data")
+    result, calls = run("fetch_diff", VIEW_RESPONSE="base", API_RESPONSE="diff data")
     assert result.returncode == 0
     assert (directory / "pr.diff").read_text() == "diff data\n"
     assert calls[0][0:3] == ["app", "pr", "view"]
@@ -77,7 +77,7 @@ def test_diff_falls_back_to_app_token_for_base(runner):
 
 def test_failed_diff_is_discarded(runner):
     directory, run = runner
-    result, _ = run("fetch-diff", BASE_SHA="base", API_FAIL="1")
+    result, _ = run("fetch_diff", BASE_SHA="base", API_FAIL="1")
     assert result.returncode == 0
     assert (directory / "pr.diff").read_text() == ""
     assert "Could not fetch the PR diff" in result.stdout
@@ -85,7 +85,7 @@ def test_failed_diff_is_discarded(runner):
 
 def test_missing_failed_jobs_produces_fallback(runner):
     directory, run = runner
-    result, _ = run("fetch-logs", API_FAIL="1")
+    result, _ = run("fetch_logs", API_FAIL="1")
     assert result.returncode == 0
     assert (directory / "failed_logs.txt").read_text() == (
         "Could not fetch failed jobs for run 123.\n"
@@ -95,7 +95,7 @@ def test_missing_failed_jobs_produces_fallback(runner):
 def test_fetch_logs_extracts_failure_sections(runner):
     directory, run = runner
     logs = "before\n##[group]test\nfirst line\n##[error]failed\nafter"
-    result, calls = run("fetch-logs", API_RESPONSE="17", LOG_RESPONSE=logs)
+    result, calls = run("fetch_logs", API_RESPONSE="17", LOG_RESPONSE=logs)
     assert result.returncode == 0
     extracted = (directory / "failed_logs.txt").read_text()
     assert "===== JOB 17 =====" in extracted
@@ -126,7 +126,7 @@ def test_post_comment_requires_failed_logs(runner):
     directory, run = runner
     (directory / "solution.md").write_text("Suggested fix")
     (directory / "failed_logs.txt").write_text("No failed jobs found.\n")
-    result, _ = run("post-comment")
+    result, _ = run("post_comment")
     assert result.returncode == 0
     assert "No CI failures detected" in result.stdout
 
@@ -134,7 +134,7 @@ def test_post_comment_requires_failed_logs(runner):
 def test_find_pr_uses_payload_and_resolves_author(runner):
     directory, run = runner
     result, calls = run(
-        "find-pr",
+        "find_pr",
         PR_NUMBER_PAYLOAD="42",
         EVENT_HEAD_SHA="abc",
         EVENT_HEAD_REPOSITORY="example/fork",
@@ -163,7 +163,7 @@ def test_find_pr_matches_head_in_commit_or_open_pr_lookup(runner, commits_match)
         ]
     )
     result, calls = run(
-        "find-pr",
+        "find_pr",
         PR_NUMBER_PAYLOAD="",
         EVENT_HEAD_SHA="abc",
         EVENT_HEAD_REPOSITORY="example/fork",
@@ -198,7 +198,7 @@ def test_find_pr_rejects_mismatched_fork(runner):
         ]
     )
     result, calls = run(
-        "find-pr",
+        "find_pr",
         PR_NUMBER_PAYLOAD="",
         EVENT_HEAD_SHA="abc",
         EVENT_HEAD_REPOSITORY="example/fork",

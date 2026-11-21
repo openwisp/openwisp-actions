@@ -958,8 +958,8 @@ class TestChangelogTriggerWorkflow(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("Verify triggering pull request", workflow)
         self.assertIn("Verify current eligible approval", workflow)
-        self.assertIn("caller/verify-approval.sh", workflow)
-        self.assertIn("caller/prepare-diff.sh", workflow)
+        self.assertIn("caller/verify_approval.sh", workflow)
+        self.assertIn("caller/prepare_diff.sh", workflow)
         self.assertNotIn("refs/pull/", workflow)
         self.assertIn(
             ".github/actions/bot-changelog-generator/shared/generate_changelog.py",

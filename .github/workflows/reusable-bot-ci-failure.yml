@@ -69,7 +69,7 @@ jobs:
           HEAD_SHA: ${{ inputs.head_sha }}
           PR_NUM: ${{ inputs.pr_number }}
           REPO: ${{ inputs.base_repo }}
-        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch-diff.sh
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch_diff.sh
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
@@ -87,7 +87,7 @@ jobs:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           RUN_ID: ${{ inputs.run_id }}
           REPO: ${{ inputs.base_repo }}
-        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch-logs.sh
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/fetch_logs.sh
 
       - name: Run AI Analysis
         timeout-minutes: 5
@@ -117,4 +117,4 @@ jobs:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_NUM: ${{ inputs.pr_number }}
           REPO: ${{ inputs.base_repo }}
-        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/post-comment.sh
+        run: bash openwisp-actions/.github/actions/bot-ci-failure/reusable/post_comment.sh

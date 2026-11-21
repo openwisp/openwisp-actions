@@ -38,6 +38,7 @@ If instructions conflict, CI configuration wins first, then repository documenta
 - Prefer short, precise names that rely on their nearest meaningful scope.
 - Add comments only when they explain a non-obvious reason, security constraint, compatibility requirement, or side effect.
 - Update `README.rst` when public interfaces, setup steps, validation commands, or supported versions change.
+- Link README workflow examples to maintained workflows instead of duplicating YAML. Use the relevant `openwisp-utils` workflows as cross-repository caller examples.
 
 ## Testing and QA
 

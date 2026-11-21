@@ -1,6 +1,56 @@
 Changelog
 =========
 
+Version 0.3.0 [2026-11-21]
+--------------------------
+
+Features
+~~~~~~~~
+
+- Added AI review reasoning effort settings
+
+  Allow each review stage to select an OpenCode reasoning variant. Keep
+  the existing default when unset, and reject unknown variants.
+
+Changes
+~~~~~~~
+
+Other changes
++++++++++++++
+
+- Reorganized workflow scripts and improved QA
+
+  Moved workflow logic into directly testable scripts, standardized script
+  names and directories, and expanded formatting and linting checks.
+
+Bugfixes
+~~~~~~~~
+
+- Fixed backport titles for direct commits
+
+  Use the source commit subject and body when no pull request is
+  associated with the commit, avoiding generic titles and empty PR
+  numbers.
+
+- Reduced redundant AI review checks
+
+  Avoid duplicating CI checks while keeping focused tests for review.
+  Allow diagnostic listings and targeted Django test commands reported as
+  blocked during real reviews.
+
+- Ignored review bot prompts in prompt injection checks `#22
+  <https://github.com/openwisp/openwisp-actions/issues/22>`_
+
+  Ignored AI agent prompt blocks inside review bot comments during history
+  processing to prevent false positive prompt injection detections.
+
+  Extended the review time limit to 50 minutes and made AI reviews aware
+  of time constraints in the shared context.
+
+- Fixed publishing AI reviews without inline comments
+
+  Publish reviews without inline comments through the GitHub API.
+
 Version 0.2.0 [2026-11-18]
 --------------------------
 

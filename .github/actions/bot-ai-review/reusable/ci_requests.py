@@ -207,6 +207,15 @@ def is_current(pr, request):
     )
 
 
+def could_have_triggered(pr, run_created_at):
+    """Keep uncertain PRs, but exclude those created later or closed before the run."""
+    if not run_created_at or not pr.get("created_at"):
+        return True
+    return pr["created_at"] <= run_created_at and (
+        not pr.get("closed_at") or pr["closed_at"] >= run_created_at
+    )
+
+
 def check_ci(api, comment_id, request, pr):
     try:
         if request.get("run_id") and request.get("attempt"):
@@ -324,7 +333,13 @@ class GitHub:
         runs = [run for page in gh(endpoint) for run in page["workflow_runs"]]
         run = select_run(runs, pr)
         if run:
-            candidates = self.pulls_for_run(run)
+            candidates = [
+                candidate
+                for candidate in (
+                    self.pull(item["number"]) for item in self.pulls_for_run(run)
+                )
+                if could_have_triggered(candidate, run.get("created_at"))
+            ]
             if len(candidates) != 1 or candidates[0]["number"] != pr["number"]:
                 raise AmbiguousCIError(
                     "CI run cannot be uniquely matched to multiple pull requests"

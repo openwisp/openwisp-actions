@@ -27,7 +27,10 @@ def runner(tmp_path):
         "    if os.environ.get('API_FAIL') == '1':\n"
         "        sys.exit(1)\n"
         "    if '--allow-escape-sequences' in args:\n"
-        "        print(os.environ.get('LOG_RESPONSE', ''))\n"
+        "        job = args[-1].split('/')[-2]\n"
+        "        if job == os.environ.get('FAIL_LOG_JOB'):\n"
+        "            sys.exit(1)\n"
+        "        print(os.environ.get('LOG_RESPONSE_' + job, os.environ.get('LOG_RESPONSE', '')))\n"
         "    elif '--method' in args and 'OPEN_PRS' in os.environ:\n"
         "        print(os.environ['OPEN_PRS'])\n"
         "    else:\n"
@@ -242,3 +245,38 @@ def test_fetch_logs_selects_attempt_and_marks_truncated_output(runner):
     assert "repos/example/repo/actions/runs/123/attempts/2/jobs" in calls[0]
     assert "truncated" in (directory / "failed_logs.txt").read_text().lower()
     assert "##[error]failed" in (directory / "failed_logs.txt").read_text()
+
+
+def test_bounded_logs_keep_the_error_from_each_failed_job(runner):
+    directory, run = runner
+    first = "##[group]test\n" + "x" * 300 + "\n##[error]first failure\n"
+    second = "##[group]test\n" + "y" * 300 + "\n##[error]second failure\n"
+    result, _ = run(
+        "fetch_logs",
+        API_RESPONSE="17\n18",
+        LOG_RESPONSE_17=first,
+        LOG_RESPONSE_18=second,
+        MAX_LOG_BYTES="160",
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "first failure" in excerpt
+    assert "second failure" in excerpt
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 160
+
+
+def test_bounded_logs_mark_an_unavailable_job_without_exceeding_the_limit(runner):
+    directory, run = runner
+    result, _ = run(
+        "fetch_logs",
+        API_RESPONSE="17\n18",
+        FAIL_LOG_JOB="17",
+        LOG_RESPONSE_18="##[group]test\n##[error]failed\n",
+        MAX_LOG_BYTES="80",
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "unavailable" in excerpt.lower()
+    assert "failed" in excerpt
+    assert len(excerpt.encode()) <= 80

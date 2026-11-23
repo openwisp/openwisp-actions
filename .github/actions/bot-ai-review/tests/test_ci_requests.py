@@ -13,6 +13,7 @@ from ci_requests import (  # noqa: E402
     GitHub,
     active_request,
     coordinate,
+    could_have_triggered,
     finish,
     parse_record,
     record_body,
@@ -709,6 +710,80 @@ class TestCIRequests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(AmbiguousCIError, "multiple pull requests"):
                 api.ci_run(pr)
+
+    def test_closed_pr_before_run_does_not_make_reused_branch_ambiguous(self):
+        pr = {
+            "number": 17,
+            "created_at": "2026-09-02T09:20:31Z",
+            "closed_at": None,
+            "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}},
+        }
+        old = {
+            "number": 18,
+            "created_at": "2026-08-26T19:05:04Z",
+            "closed_at": "2026-08-28T10:51:25Z",
+        }
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [],
+            "created_at": "2026-09-02T09:26:48Z",
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", side_effect=[[{"workflow_runs": [run]}], [[]]]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, old]
+        ):
+            self.assertEqual(api.ci_run(pr), run)
+
+    def test_other_pr_open_when_run_started_is_still_ambiguous_after_it_closes(self):
+        pr = {
+            "number": 17,
+            "created_at": "2026-09-02T09:20:31Z",
+            "closed_at": None,
+            "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}},
+        }
+        old = {
+            "number": 18,
+            "created_at": "2026-08-26T19:05:04Z",
+            "closed_at": "2026-09-03T10:51:25Z",
+        }
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [],
+            "created_at": "2026-09-02T09:26:48Z",
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", return_value=[{"workflow_runs": [run]}]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, old]
+        ):
+            with self.assertRaisesRegex(AmbiguousCIError, "multiple pull requests"):
+                api.ci_run(pr)
+
+    def test_uncertain_pr_dates_remain_candidates(self):
+        self.assertTrue(could_have_triggered({}, "2026-09-02T09:26:48Z"))
+        self.assertTrue(
+            could_have_triggered({"created_at": "2026-09-02T09:26:48Z"}, None)
+        )
+        self.assertFalse(
+            could_have_triggered(
+                {"created_at": "2026-09-03T00:00:00Z"}, "2026-09-02T09:26:48Z"
+            )
+        )
 
     def test_waiting_request_resumes_once_and_allows_a_fresh_request_after_finishing(
         self,

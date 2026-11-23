@@ -12,26 +12,30 @@ class AmbiguousCIError(ValueError):
 
 
 def matching_runs(runs, pr):
-    """Match the requested SHA and PR, using the source branch when GitHub omits the PR for a fork."""
+    """Match the source and any unique PR association; GitHub omits associations for some forks."""
     matches = []
-    head = pr["head"]
     for run in runs:
-        if run["event"] != "pull_request" or run["head_sha"] != head["sha"]:
+        if not matches_source(run, pr):
             continue
         pull_requests = run.get("pull_requests") or []
         if pull_requests:
             if len(pull_requests) != 1 or pull_requests[0]["number"] != pr["number"]:
                 continue
-        else:
-            if (
-                not head.get("repo")
-                or not run.get("head_repository")
-                or run["head_repository"]["id"] != head["repo"]["id"]
-                or run["head_branch"] != head["ref"]
-            ):
-                continue
         matches.append(run)
     return matches
+
+
+def matches_source(run, pr):
+    """Match the run's source even when GitHub associates it with another PR."""
+    head = pr["head"]
+    return (
+        run["event"] == "pull_request"
+        and run["head_sha"] == head["sha"]
+        and head.get("repo")
+        and run.get("head_repository")
+        and run["head_repository"]["id"] == head["repo"]["id"]
+        and run["head_branch"] == head["ref"]
+    )
 
 
 def classify(run):
@@ -44,19 +48,18 @@ def classify(run):
 
 
 def select_run(runs, pr):
-    """Pick the newest run for this PR and SHA unless the associations are ambiguous.
+    """Find the newest candidate; the caller must resolve any shared PR associations.
 
     A retry keeps the same run ID and changes its attempt number.
     """
     for run in sorted(runs, key=lambda item: item["id"], reverse=True):
         associations = run.get("pull_requests") or []
         if (
-            run["event"] == "pull_request"
-            and run["head_sha"] == pr["head"]["sha"]
+            matches_source(run, pr)
             and len(associations) > 1
             and any(item["number"] == pr["number"] for item in associations)
         ):
-            raise AmbiguousCIError("CI run is associated with multiple pull requests")
+            return run
         if matching_runs([run], pr):
             return run
     return None

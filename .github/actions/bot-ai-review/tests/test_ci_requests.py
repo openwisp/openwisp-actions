@@ -413,6 +413,7 @@ class TestCIRequests(unittest.TestCase):
         }
         stored = {
             **self.comment,
+            "body": record_body({**self.request, "review_run_id": 111}, "Waiting."),
             "issue_url": "https://api.github.com/repos/openwisp/repo/issues/17",
         }
 
@@ -436,8 +437,11 @@ class TestCIRequests(unittest.TestCase):
                 self.body = body
 
         api = API()
-        coordinate(api, 42, "openwisp/repo", 17, {}, dispatch, review_run_id=777)
+        result = coordinate(
+            api, 42, "openwisp/repo", 17, {}, dispatch, review_run_id=777
+        )
         self.assertIn('"review_run_id":777', api.body)
+        self.assertEqual(result["review_run_id"], 777)
 
     def test_same_app_cannot_resume_a_tampered_record(self):
         tampered = {
@@ -900,3 +904,62 @@ class TestCIRequests(unittest.TestCase):
             api, "pull", side_effect=[pr, other]
         ):
             self.assertEqual(api.ci_run(pr), run)
+
+    def test_historical_run_association_is_checked_against_pr_lifetimes(self):
+        pr = {
+            "number": 17,
+            "created_at": "2026-09-02T09:20:31Z",
+            "closed_at": None,
+            "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}},
+        }
+        old = {
+            "number": 18,
+            "created_at": "2026-08-26T19:05:04Z",
+            "closed_at": "2026-08-28T10:51:25Z",
+        }
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}, {"number": 18}],
+            "created_at": "2026-09-02T09:26:48Z",
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", side_effect=[[{"workflow_runs": [run]}], [[]]]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, old]
+        ):
+            self.assertEqual(api.ci_run(pr), run)
+
+    def test_newest_run_with_overlapping_pr_associations_remains_ambiguous(self):
+        pr = {
+            "number": 17,
+            "created_at": "2026-09-02T09:20:31Z",
+            "closed_at": None,
+            "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}},
+        }
+        other = {"number": 18, "created_at": "2026-08-26T19:05:04Z", "closed_at": None}
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}, {"number": 18}],
+            "created_at": "2026-09-02T09:26:48Z",
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", side_effect=[[{"workflow_runs": [run]}], [[]], [[]]]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, other]
+        ):
+            with self.assertRaises(AmbiguousCIError):
+                api.ci_run(pr)

@@ -128,8 +128,9 @@ class TestCIRuns(unittest.TestCase):
     def test_run_associated_with_multiple_prs_is_not_a_unique_match(self):
         ambiguous = {**self.run, "pull_requests": [{"number": 17}, {"number": 18}]}
         self.assertEqual(matching_runs([ambiguous], self.pr), [])
-        with self.assertRaisesRegex(ValueError, "multiple pull requests"):
-            select_run([{**self.run, "id": 2}, ambiguous], self.pr)
+        self.assertEqual(
+            select_run([{**self.run, "id": 2}, ambiguous], self.pr), ambiguous
+        )
 
     def test_newest_applicable_run_determines_whether_association_is_ambiguous(self):
         old = {**self.run, "id": 2, "pull_requests": [{"number": 17}, {"number": 18}]}
@@ -138,5 +139,13 @@ class TestCIRuns(unittest.TestCase):
             self.assertEqual(select_run(runs, self.pr), new)
         old["id"], new["id"] = 5, 3
         for runs in ([old, new], [new, old]):
-            with self.assertRaisesRegex(ValueError, "multiple pull requests"):
-                select_run(runs, self.pr)
+            self.assertEqual(select_run(runs, self.pr), old)
+
+    def test_associated_run_from_another_source_repository_is_not_a_candidate(self):
+        run = {
+            **self.run,
+            "head_repository": {"id": 4},
+            "pull_requests": [{"number": 17}],
+        }
+        self.assertEqual(matching_runs([run], self.pr), [])
+        self.assertIsNone(select_run([run], self.pr))

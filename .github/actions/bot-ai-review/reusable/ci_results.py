@@ -7,6 +7,10 @@ import tempfile
 from pathlib import Path
 
 
+class AmbiguousCIError(ValueError):
+    """The available run data cannot identify one pull request safely."""
+
+
 def matching_runs(runs, pr):
     matches = []
     head = pr["head"]
@@ -15,7 +19,7 @@ def matching_runs(runs, pr):
             continue
         pull_requests = run.get("pull_requests") or []
         if pull_requests:
-            if not any(item["number"] == pr["number"] for item in pull_requests):
+            if len(pull_requests) != 1 or pull_requests[0]["number"] != pr["number"]:
                 continue
         else:
             # GitHub can omit pull request associations for forked pull requests.
@@ -41,6 +45,15 @@ def classify(run):
 def select_run(runs, pr):
     # A newer run for the same PR and SHA supersedes an older run. Retries of
     # the same run are represented by its current attempt rather than a new ID.
+    for run in runs:
+        associations = run.get("pull_requests") or []
+        if (
+            run["event"] == "pull_request"
+            and run["head_sha"] == pr["head"]["sha"]
+            and len(associations) > 1
+            and any(item["number"] == pr["number"] for item in associations)
+        ):
+            raise AmbiguousCIError("CI run is associated with multiple pull requests")
     return max(matching_runs(runs, pr), key=lambda run: run["id"], default=None)
 
 

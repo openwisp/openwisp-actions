@@ -9,6 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "reusable"))
 
 from ci_requests import (  # noqa: E402
+    AmbiguousCIError,
     GitHub,
     active_request,
     coordinate,
@@ -100,8 +101,19 @@ class TestCIRequests(unittest.TestCase):
             def comments(self, pr):
                 return [self_comment]
 
+            def ci_run(self, pr):
+                return {
+                    "id": 5,
+                    "run_attempt": 1,
+                    "status": "in_progress",
+                    "html_url": "url",
+                }
+
+            def update(self, comment_id, body):
+                self.body = body
+
         self_comment = self.comment
-        self.assertEqual(register(API(), 42, 17, self.request, {})[0], "duplicate")
+        self.assertEqual(register(API(), 42, 17, self.request, {})[0], "waiting")
 
     def test_stopped_runs_cannot_start_review(self):
         for run in (
@@ -442,6 +454,152 @@ class TestCIRequests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "signing key"):
                 record_body(self.request, "Waiting.")
 
+    def test_resuming_uses_saved_attempt_even_when_a_later_retry_is_running(self):
+        saved = {**self.request, "run_id": 5, "attempt": 1}
+        comment = {**self.comment, "body": record_body(saved, "Waiting.")}
+
+        class API:
+            def run_attempt(self, run_id, attempt):
+                assert (run_id, attempt) == (5, 1)
+                return {
+                    "id": 5,
+                    "run_attempt": 1,
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "html_url": "url",
+                }
+
+            def ci_run(self, pr):
+                raise AssertionError(
+                    "the later retry must not replace the saved attempt"
+                )
+
+            def update(self, comment_id, body):
+                self.body = body
+
+        api = API()
+        state, _, run = resume(
+            api, comment, 42, {"state": "open", "head": {"sha": "a" * 40}}
+        )
+        self.assertEqual(state, "ready")
+        self.assertEqual(run["run_attempt"], 1)
+
+    def test_repeated_command_recovers_waiting_request_without_creating_another(self):
+        old = {
+            **self.request,
+            "run_id": 5,
+            "attempt": 1,
+            "base_sha": "b" * 40,
+            "model": "p/m",
+            "effort": "",
+        }
+        comment = {**self.comment, "body": record_body(old, "Waiting.")}
+        pr = {"number": 17, "state": "open", "head": {"sha": "a" * 40}}
+
+        class API:
+            def pull(self, number):
+                return pr
+
+            def comments(self, number):
+                return [comment]
+
+            def run_attempt(self, run_id, attempt):
+                return {
+                    "id": 5,
+                    "run_attempt": 1,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "html_url": "url",
+                }
+
+            def update(self, number, body):
+                self.body = body
+
+            def create(self, number, body):
+                raise AssertionError("must reuse the existing request")
+
+        request = {**old, "comment_id": 999}
+        result = coordinate(API(), 42, "openwisp/repo", 17, request, None, 77)
+        self.assertEqual(result["record_id"], 9)
+        self.assertEqual(result["comment_id"], 123)
+        self.assertEqual(result["run_id"], 5)
+
+    def test_reads_saved_attempt_from_attempt_endpoint(self):
+        with patch("ci_requests.gh", return_value=[{"id": 5, "run_attempt": 2}]) as gh:
+            self.assertEqual(
+                GitHub("openwisp/repo").run_attempt(5, 2)["run_attempt"], 2
+            )
+        gh.assert_called_once_with("repos/openwisp/repo/actions/runs/5/attempts/2")
+
+    def test_associated_run_is_rejected_if_another_pr_shares_its_head(self):
+        pr = {
+            "number": 17,
+            "state": "open",
+            "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}},
+        }
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}],
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", return_value=[{"workflow_runs": [run]}]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, {**pr, "number": 18}]
+        ):
+            with self.assertRaisesRegex(ValueError, "multiple pull requests"):
+                api.ci_run(pr)
+
+    def test_closed_pr_with_same_head_still_makes_ci_run_ambiguous(self):
+        pr = {
+            "number": 17,
+            "state": "open",
+            "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}},
+        }
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}],
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", return_value=[{"workflow_runs": [run]}]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, {**pr, "number": 18, "state": "closed"}]
+        ):
+            with self.assertRaisesRegex(ValueError, "multiple pull requests"):
+                api.ci_run(pr)
+
+    def test_ambiguous_ci_run_is_explained_in_request_comment(self):
+        class API:
+            def comments(self, number):
+                return []
+
+            def create(self, number, body):
+                return 7
+
+            def ci_run(self, pr):
+                raise AmbiguousCIError("multiple pull requests")
+
+            def update(self, number, body):
+                self.body = body
+
+        api = API()
+        with self.assertRaises(AmbiguousCIError):
+            register(api, 42, 17, self.request, {})
+        self.assertIn("multiple pull requests", api.body)
+
     def test_waiting_request_resumes_once_and_allows_a_fresh_request_after_finishing(
         self,
     ):
@@ -486,6 +644,9 @@ class TestCIRequests(unittest.TestCase):
                 self.items[number - 1]["body"] = body
 
             def ci_run(self, current):
+                return run
+
+            def run_attempt(self, run_id, attempt):
                 return run
 
         api = API()

@@ -8,7 +8,7 @@ import re
 import subprocess
 from urllib.parse import urlencode
 
-from ci_results import classify, gh, select_run
+from ci_results import AmbiguousCIError, classify, gh, select_run
 
 # Do not pass the signing key to gh or other child processes.
 STATE_KEY = os.environ.pop("CI_STATE_KEY", "").encode()
@@ -85,7 +85,14 @@ def register(api, app_id, pr_number, request, pr):
     if existing:
         old = parse_record(existing, app_id)
         review_run_id = old.get("review_run_id")
-        if old["state"] != "reviewing" or not review_run_id:
+        if old["state"] == "waiting":
+            # A failed update or a lost completion event can leave CI finished
+            # while the request still says waiting. Recheck the same record.
+            old["review_run_id"] = request.get("review_run_id")
+            request.clear()
+            request.update(old)
+            return check_ci(api, existing["id"], request, pr)
+        if not review_run_id:
             return "duplicate", None, None
         # A workflow can fail before its cleanup job. Recover on the next
         # request only after GitHub confirms that workflow is no longer running.
@@ -184,7 +191,22 @@ def finish(api, app_id, pr_number, comment_id, publication_result):
 
 def check_ci(api, comment_id, request, pr):
     try:
-        run = api.ci_run(pr)
+        if request.get("run_id") and request.get("attempt"):
+            # A retry started after the selected attempt finished must not
+            # postpone the review when its completion event arrives late.
+            run = api.run_attempt(request["run_id"], request["attempt"])
+        else:
+            run = api.ci_run(pr)
+    except AmbiguousCIError:
+        request["state"] = "done"
+        api.update(
+            comment_id,
+            record_body(
+                request,
+                "CI could match multiple pull requests. Request a new review when the run is unambiguous.",
+            ),
+        )
+        raise
     except Exception:
         request["state"] = "done"
         api.update(
@@ -234,6 +256,10 @@ class GitHub:
     def workflow_run(self, run_id):
         return gh(f"repos/{self.repository}/actions/runs/{run_id}")[0]
 
+    def run_attempt(self, run_id, attempt):
+        endpoint = f"repos/{self.repository}/actions/runs/{run_id}/attempts/{attempt}"
+        return gh(endpoint)[0]
+
     def pulls_for_run(self, run):
         # GitHub leaves pull_requests empty for fork runs. Query by the source
         # repository and branch so those requests can still be resumed.
@@ -281,17 +307,13 @@ class GitHub:
         )
         runs = [run for page in gh(endpoint) for run in page["workflow_runs"]]
         run = select_run(runs, pr)
-        if run and not run.get("pull_requests"):
-            # Two PRs can share a fork branch and commit. Without GitHub's PR
-            # association, their separate CI runs cannot be distinguished.
+        if run:
+            # GitHub's run associations can list PRs sharing a head commit,
+            # rather than identifying which PR actually triggered the run.
             candidates = [self.pull(item["number"]) for item in self.pulls_for_run(run)]
-            matches = [
-                item
-                for item in candidates
-                if item["state"] == "open" and item["head"]["sha"] == sha
-            ]
+            matches = [item for item in candidates if item["head"]["sha"] == sha]
             if len(matches) != 1 or matches[0]["number"] != pr["number"]:
-                raise ValueError(
+                raise AmbiguousCIError(
                     "CI run cannot be uniquely matched to multiple pull requests"
                 )
         return run

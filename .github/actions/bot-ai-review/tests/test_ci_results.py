@@ -124,3 +124,9 @@ class TestCIRuns(unittest.TestCase):
             return_value='{"jobs": [1]}\n{"jobs": [2]}\n',
         ):
             self.assertEqual(gh("example"), [{"jobs": [1]}, {"jobs": [2]}])
+
+    def test_run_associated_with_multiple_prs_is_not_a_unique_match(self):
+        ambiguous = {**self.run, "pull_requests": [{"number": 17}, {"number": 18}]}
+        self.assertEqual(matching_runs([ambiguous], self.pr), [])
+        with self.assertRaisesRegex(ValueError, "multiple pull requests"):
+            select_run([self.run, ambiguous], self.pr)

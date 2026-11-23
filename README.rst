@@ -534,6 +534,14 @@ review runs as before. A repository that provides the installer must
 follow the CI convention: invalid matrix or runtime configuration fails
 the review instead of silently selecting a different environment.
 
+Repositories that need privileged host dependencies can add
+``.ci-review-system-deps`` to the base branch. Their installer must
+install only host dependencies when ``CI_SYSTEM_DEPS_ONLY=1`` and skip
+that phase when ``CI_SYSTEM_DEPS_READY=1``. The workflow runs the first
+phase from the trusted base checkout before configuring model credentials,
+then runs the remaining installation as the reviewer. Pull request code is
+not used for either setup phase.
+
 Repositories can expose their test runner through an executable
 ``./runtests``. The reviewer can pass supported test selectors to this
 entry point to run focused tests in its sandbox. Explicitly allowlist

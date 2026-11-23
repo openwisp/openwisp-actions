@@ -4,12 +4,15 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 PREPARE = ROOT / "ci-dependencies" / "reusable" / "prepare_review.sh"
 SYNC = ROOT / "bot-ai-review" / "reusable" / "sync_copy.sh"
 
 
-def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path):
+@pytest.mark.parametrize("system_deps", [False, True])
+def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_deps):
     base = tmp_path / "base"
     pr = tmp_path / "pr"
     run = tmp_path / "run"
@@ -26,9 +29,14 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path):
     (yarn_cache / "package").write_text("yarn cache")
     (base / "feature.py").write_text("base")
     (base / "deleted.py").write_text("delete me")
+    if system_deps:
+        (base / ".ci-review-system-deps").touch()
     (base / "install-ci-deps.sh").write_text(
-        '#!/bin/bash\nprintf "%s:%s:%s" "$(cat feature.py)" '
-        '"${SECRET_SENTINEL-unset}" "${CI_QA-unset}" > installed.txt\n'
+        '#!/bin/bash\nif [ "${CI_SYSTEM_DEPS_ONLY:-0}" = 1 ]; then\n'
+        '  printf "%s:%s" "$(cat feature.py)" "${SECRET_SENTINEL-unset}" > system.txt\n'
+        'else\n  printf "%s:%s:%s:%s" "$(cat feature.py)" '
+        '"${SECRET_SENTINEL-unset}" "${CI_QA-unset}" '
+        '"${CI_SYSTEM_DEPS_READY:-0}" > installed.txt\nfi\n'
     )
     (pr / "feature.py").write_text("pull request")
     sudo = bins / "sudo"
@@ -62,7 +70,9 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path):
         check=True,
         capture_output=True,
     )
-    assert (run / "installed.txt").read_text() == "base:unset:1"
+    assert (run / "installed.txt").read_text() == f"base:unset:1:{int(system_deps)}"
+    if system_deps:
+        assert (base / "system.txt").read_text() == "base:unset"
     assert (home / ".cache" / "pip" / "package").read_text() == "pip cache"
     assert (home / ".cache" / "yarn" / "v6" / "package").read_text() == "yarn cache"
     subprocess.run(
@@ -72,4 +82,4 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path):
     )
     assert (run / "feature.py").read_text() == "pull request"
     assert not (run / "deleted.py").exists()
-    assert (run / "installed.txt").read_text() == "base:unset:1"
+    assert (run / "installed.txt").read_text() == f"base:unset:1:{int(system_deps)}"

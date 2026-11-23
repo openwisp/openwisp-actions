@@ -129,4 +129,14 @@ class TestCIRuns(unittest.TestCase):
         ambiguous = {**self.run, "pull_requests": [{"number": 17}, {"number": 18}]}
         self.assertEqual(matching_runs([ambiguous], self.pr), [])
         with self.assertRaisesRegex(ValueError, "multiple pull requests"):
-            select_run([self.run, ambiguous], self.pr)
+            select_run([{**self.run, "id": 2}, ambiguous], self.pr)
+
+    def test_newest_applicable_run_determines_whether_association_is_ambiguous(self):
+        old = {**self.run, "id": 2, "pull_requests": [{"number": 17}, {"number": 18}]}
+        new = {**self.run, "id": 4, "pull_requests": [{"number": 17}]}
+        for runs in ([old, new], [new, old]):
+            self.assertEqual(select_run(runs, self.pr), new)
+        old["id"], new["id"] = 5, 3
+        for runs in ([old, new], [new, old]):
+            with self.assertRaisesRegex(ValueError, "multiple pull requests"):
+                select_run(runs, self.pr)

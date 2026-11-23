@@ -600,6 +600,97 @@ class TestCIRequests(unittest.TestCase):
             register(api, 42, 17, self.request, {})
         self.assertIn("multiple pull requests", api.body)
 
+    def test_retargeted_pr_does_not_resume_old_waiting_request(self):
+        old = {**self.request, "base_ref": "release"}
+        comment = {**self.comment, "body": record_body(old, "Waiting.")}
+
+        class API:
+            def update(self, comment_id, body):
+                self.body = body
+
+        api = API()
+        pr = {"state": "open", "head": {"sha": "a" * 40}, "base": {"ref": "master"}}
+        self.assertEqual(resume(api, comment, 42, pr)[0], "stopped")
+        self.assertIn('"state":"done"', api.body)
+
+    def test_new_request_after_retarget_does_not_reuse_old_base(self):
+        old = {**self.request, "base_ref": "release"}
+        comment = {**self.comment, "body": record_body(old, "Waiting.")}
+        request = {**self.request, "base_ref": "master", "comment_id": 999}
+
+        class API:
+            def __init__(self):
+                self.updates = []
+
+            def comments(self, number):
+                return [comment]
+
+            def create(self, number, body):
+                return 10
+
+            def update(self, number, body):
+                self.updates.append((number, body))
+
+            def ci_run(self, pr):
+                return None
+
+        api = API()
+        self.assertEqual(register(api, 42, 17, request, {})[0], "stopped")
+        self.assertIn('"state":"done"', api.updates[0][1])
+        self.assertEqual(api.updates[0][0], 9)
+        self.assertEqual(api.updates[1][0], 10)
+
+    def test_ci_created_before_retarget_is_not_used_for_new_base(self):
+        pr = {"number": 17, "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}}}
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}],
+            "created_at": "2026-01-01T10:00:00Z",
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh",
+            side_effect=[
+                [{"workflow_runs": [run]}],
+                [[{"event": "base_ref_changed", "created_at": "2026-01-01T11:00:00Z"}]],
+            ],
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}]
+        ), patch.object(
+            api, "pull", return_value=pr
+        ):
+            with self.assertRaisesRegex(AmbiguousCIError, "base"):
+                api.ci_run(pr)
+
+    def test_ci_created_after_retarget_can_be_used(self):
+        pr = {"number": 17, "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}}}
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}],
+            "created_at": "2026-01-01T11:00:00Z",
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh",
+            side_effect=[
+                [{"workflow_runs": [run]}],
+                [[{"event": "base_ref_changed", "created_at": "2026-01-01T10:00:00Z"}]],
+            ],
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}]
+        ), patch.object(
+            api, "pull", return_value=pr
+        ):
+            self.assertEqual(api.ci_run(pr), run)
+
     def test_waiting_request_resumes_once_and_allows_a_fresh_request_after_finishing(
         self,
     ):

@@ -10,7 +10,7 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "reusable"))
 
-from ci_standardization import check, main, tree  # noqa: E402
+from check_ci_standardization import check, main, tree  # noqa: E402
 
 
 def test_finds_standard_files_in_base_tree():
@@ -24,12 +24,14 @@ def test_finds_standard_files_in_base_tree():
         "github": {"tree": [{"path": "workflows", "type": "tree", "sha": "workflows"}]},
         "workflows": {"tree": [{"path": "ci.yml", "type": "blob"}]},
     }
-    with patch("ci_standardization.tree", side_effect=lambda repo, sha: trees[sha]):
+    with patch(
+        "check_ci_standardization.tree", side_effect=lambda repo, sha: trees[sha]
+    ):
         assert check("openwisp/repo", "base") == []
 
 
 def test_reports_missing_files_without_guessing():
-    with patch("ci_standardization.tree", return_value={"tree": []}):
+    with patch("check_ci_standardization.tree", return_value={"tree": []}):
         assert check("openwisp/repo", "base") == [
             ".github/workflows/ci.yml",
             "install-ci-deps.sh",
@@ -38,7 +40,8 @@ def test_reports_missing_files_without_guessing():
 
 def test_tree_error_is_not_reported_as_missing_files():
     with patch(
-        "ci_standardization.tree", side_effect=subprocess.CalledProcessError(1, "gh")
+        "check_ci_standardization.tree",
+        side_effect=subprocess.CalledProcessError(1, "gh"),
     ):
         try:
             check("openwisp/repo", "base")
@@ -55,7 +58,7 @@ def test_does_not_accept_directories_as_files():
             {"path": ".github", "type": "blob"},
         ]
     }
-    with patch("ci_standardization.tree", return_value=root):
+    with patch("check_ci_standardization.tree", return_value=root):
         assert check("openwisp/repo", "base") == [
             ".github/workflows/ci.yml",
             "install-ci-deps.sh",
@@ -73,7 +76,7 @@ def test_workflow_checks_base_revision_and_passes_result_to_publisher():
         item for item in gate["steps"] if item.get("id") == "ci-standardization"
     )
     assert step["env"]["BASE_SHA"] == "${{ steps.coordinate.outputs.base_sha }}"
-    assert "ci_standardization.py" in step["run"]
+    assert step["run"].endswith("/check_ci_standardization.py")
     assert (
         gate["outputs"]["ci_standard_status"]
         == "${{ steps.ci-standardization.outputs.status }}"
@@ -95,7 +98,8 @@ def test_workflow_checks_base_revision_and_passes_result_to_publisher():
 
 def test_incomplete_tree_is_an_error():
     with patch(
-        "ci_standardization.subprocess.check_output", return_value='{"truncated": true}'
+        "check_ci_standardization.subprocess.check_output",
+        return_value='{"truncated": true}',
     ):
         try:
             tree("openwisp/repo", "base")
@@ -116,7 +120,8 @@ def test_api_failure_outputs_unknown_status(capsys):
             "GITHUB_OUTPUT": output.name,
         },
     ), patch(
-        "ci_standardization.check", side_effect=subprocess.CalledProcessError(1, "gh")
+        "check_ci_standardization.check",
+        side_effect=subprocess.CalledProcessError(1, "gh"),
     ):
         main()
         assert output.read().decode() == "status=unknown\nmissing=\n"

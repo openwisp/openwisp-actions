@@ -31,8 +31,10 @@ def entry(data, name, kind):
 
 
 def check(repository, base_sha):
-    # Read only the three small trees needed. PR files are untrusted and may
-    # claim that the base branch has already adopted the convention.
+    """Find missing CI entry points using at most three reads of the trusted base tree.
+
+    PR files cannot establish whether the base branch adopted the convention.
+    """
     root = tree(repository, base_sha)
     installer = entry(root, INSTALLER, "blob")
     github = entry(root, ".github", "tree")
@@ -51,6 +53,7 @@ def check(repository, base_sha):
 
 
 def main():
+    """Report an unavailable check separately from confirmed missing files."""
     try:
         missing = check(os.environ["REPOSITORY"], os.environ["BASE_SHA"])
     except (
@@ -59,7 +62,6 @@ def main():
         KeyError,
         json.JSONDecodeError,
     ) as error:
-        # An API failure is not evidence that the repository lacks a file.
         print(f"::warning::Could not check CI entry points: {error}", file=sys.stderr)
         status, missing = "unknown", []
     else:

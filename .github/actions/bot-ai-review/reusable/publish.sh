@@ -42,7 +42,9 @@ COMMENTS="$RUNNER_TEMP/comments.json"
 jq '.comments' "$FINDINGS" >"$COMMENTS"
 CURRENT_SHA=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
 CURRENT_STATE=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.state')
-if [ "$CURRENT_SHA" != "$HEAD_SHA" ] || [ "$CURRENT_STATE" != open ]; then
+CURRENT_BASE=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.base.ref')
+if [ "$CURRENT_SHA" != "$HEAD_SHA" ] || [ "$CURRENT_STATE" != open ] || \
+  [ "$CURRENT_BASE" != "$BASE_REF" ]; then
   echo "::error::The pull request changed or closed during the review, request it again"
   exit 1
 fi

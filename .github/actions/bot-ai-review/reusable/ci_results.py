@@ -12,6 +12,7 @@ class AmbiguousCIError(ValueError):
 
 
 def matching_runs(runs, pr):
+    """Match the requested SHA and PR, using the source branch when GitHub omits the PR for a fork."""
     matches = []
     head = pr["head"]
     for run in runs:
@@ -22,7 +23,6 @@ def matching_runs(runs, pr):
             if len(pull_requests) != 1 or pull_requests[0]["number"] != pr["number"]:
                 continue
         else:
-            # GitHub can omit pull request associations for forked pull requests.
             if (
                 not head.get("repo")
                 or not run.get("head_repository")
@@ -35,6 +35,7 @@ def matching_runs(runs, pr):
 
 
 def classify(run):
+    """Allow ordinary CI failures as evidence, but stop on other terminal outcomes."""
     if run["status"] != "completed":
         return "waiting"
     if run.get("conclusion") in ("success", "failure"):
@@ -43,9 +44,11 @@ def classify(run):
 
 
 def select_run(runs, pr):
-    # A newer run for the same PR and SHA supersedes an older run. Retries of
-    # the same run are represented by its current attempt rather than a new ID.
-    for run in runs:
+    """Pick the newest run for this PR and SHA unless the associations are ambiguous.
+
+    A retry keeps the same run ID and changes its attempt number.
+    """
+    for run in sorted(runs, key=lambda item: item["id"], reverse=True):
         associations = run.get("pull_requests") or []
         if (
             run["event"] == "pull_request"
@@ -54,13 +57,14 @@ def select_run(runs, pr):
             and any(item["number"] == pr["number"] for item in associations)
         ):
             raise AmbiguousCIError("CI run is associated with multiple pull requests")
-    return max(matching_runs(runs, pr), key=lambda run: run["id"], default=None)
+        if matching_runs([run], pr):
+            return run
+    return None
 
 
 def gh(endpoint):
+    """Read every page, which gh prints as a separate JSON document."""
     output = subprocess.check_output(["gh", "api", "--paginate", endpoint], text=True)
-    # gh prints each page as a separate JSON document; decode all pages rather
-    # than assuming that the response fits in one page.
     decoder = json.JSONDecoder()
     pages = []
     remaining = output.strip()
@@ -93,9 +97,8 @@ def failed_logs(repository, run_id, attempt):
 
 
 def results(repository, run):
+    """Collect jobs and logs for this attempt so a later retry cannot change the evidence."""
     attempt = run["run_attempt"]
-    # Pin the jobs endpoint to the selected attempt so a later retry cannot
-    # silently change the evidence after the review has started.
     endpoint = (
         f"repos/{repository}/actions/runs/{run['id']}/attempts/{attempt}"
         "/jobs?per_page=100"

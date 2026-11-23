@@ -9,10 +9,12 @@ from ci_requests import GitHub, coordinate
 def prepare(
     enabled, request, event_comment, repository, pr_number, app_id, review_run_id=None
 ):
+    """Pass through legacy requests or ask the coordinator to authorize a CI-aware review.
+
+    The coordinator verifies both an internal dispatch and its stored request.
+    """
     if not enabled:
         return request
-    # Only bot-authored internal comments can resume a stored request. The
-    # coordinator verifies both the dispatch and the original app record.
     dispatch = (
         event_comment
         if event_comment.get("body", "").startswith("/ai-review-resume ")
@@ -42,6 +44,7 @@ def main():
         "stage": os.environ.get("STAGE", ""),
         "head_sha": os.environ.get("HEAD_SHA", ""),
         "base_sha": os.environ.get("BASE_SHA", ""),
+        "base_ref": os.environ.get("BASE_REF", ""),
         "model": os.environ.get("MODEL", ""),
         "effort": os.environ.get("EFFORT", ""),
         "comment_id": event["comment"]["id"],
@@ -62,6 +65,7 @@ def main():
             "stage",
             "head_sha",
             "base_sha",
+            "base_ref",
             "model",
             "effort",
             "comment_id",

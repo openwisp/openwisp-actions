@@ -39,6 +39,7 @@ jobs:
       model: ${{ steps.coordinate.outputs.model }}
       head_sha: ${{ steps.coordinate.outputs.head_sha }}
       base_sha: ${{ steps.coordinate.outputs.base_sha }}
+      base_ref: ${{ steps.coordinate.outputs.base_ref }}
       effort: ${{ steps.coordinate.outputs.effort }}
       comment_id: ${{ steps.coordinate.outputs.comment_id }}
       record_id: ${{ steps.coordinate.outputs.record_id }}
@@ -127,6 +128,7 @@ jobs:
           EFFORT: ${{ steps.command.outputs.effort }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
         run: python3 openwisp-actions/.github/actions/bot-ai-review/reusable/coordinate_review.py
 
       - name: Check CI entry points
@@ -136,7 +138,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           BASE_SHA: ${{ steps.coordinate.outputs.base_sha }}
-        run: python3 openwisp-actions/.github/actions/bot-ai-review/reusable/ci_standardization.py
+        run: python3 openwisp-actions/.github/actions/bot-ai-review/reusable/check_ci_standardization.py
 
       - name: Generate shared guidance token
         if: steps.coordinate.outputs.stage != ''
@@ -227,6 +229,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+          BASE_REF: ${{ needs.gate.outputs.base_ref }}
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/verify_pull_request.sh
 
       - name: Fetch pull request as data
@@ -351,6 +354,7 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
           MODEL: ${{ needs.gate.outputs.model }}
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+          BASE_REF: ${{ needs.gate.outputs.base_ref }}
           STAGE: ${{ needs.gate.outputs.stage }}
           FINDINGS: ${{ runner.temp }}/findings/findings.json
           CI_STANDARD_STATUS: ${{ needs.gate.outputs.ci_standard_status }}

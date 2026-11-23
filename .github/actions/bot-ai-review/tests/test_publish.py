@@ -31,6 +31,7 @@ echo "gh $*" >>"$STATE/log"
 case "$*" in
   *"--jq .head.sha"*) echo "$REMOTE_HEAD" ;;
   *"--jq .state"*) echo "${REMOTE_STATE:-open}" ;;
+  *"--jq .base.ref"*) echo "${REMOTE_BASE:-master}" ;;
   "api --paginate "*) cat "$STATE/reviews.json" ;;
   "api -X POST "*) cat >"$STATE/review.json" ;;
 esac
@@ -68,6 +69,7 @@ def publish(
     ci_aware=False,
     ci_standard_status="unknown",
     ci_standard_missing="",
+    remote_base="master",
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
@@ -97,6 +99,8 @@ def publish(
             "HEAD_SHA": HEAD_SHA,
             "REMOTE_HEAD": remote_head,
             "REMOTE_STATE": remote_state,
+            "BASE_REF": "master",
+            "REMOTE_BASE": remote_base,
             "CI_AWARE": str(ci_aware).lower(),
             "CI_STANDARD_STATUS": ci_standard_status,
             "CI_STANDARD_MISSING": ci_standard_missing,
@@ -113,7 +117,12 @@ def publish(
                 review = json.load(f)
         else:
             review = None
-        if remote_head != HEAD_SHA or fail_push or remote_state != "open":
+        if (
+            remote_head != HEAD_SHA
+            or fail_push
+            or remote_state != "open"
+            or remote_base != "master"
+        ):
             return result.returncode, log
         assert result.returncode == 0, result.stderr
         return log, review
@@ -279,6 +288,11 @@ class TestPublish(unittest.TestCase):
         _, review = publish(APPROVED, comments=(), ci_standard_status="present")
         self.assertNotIn("Missing CI entry points", review["body"])
         self.assertNotIn("could not be checked", review["body"])
+
+    def test_retargeted_pull_request_stops_publication(self):
+        status, log = publish(APPROVED, comments=(), remote_base="release")
+        self.assertNotEqual(status, 0)
+        self.assertFalse(any("api -X POST" in line for line in log))
 
 
 if __name__ == "__main__":

@@ -24,8 +24,10 @@ def record_body(request, message):
 
 
 def parse_record(comment, app_id):
-    # Other bots use the same app and may quote attacker-controlled text.
-    # Authenticate the record as well as the app and bind it to its comment.
+    """Trust only a signed record bound to this app comment.
+
+    Other bots use the same app and may quote untrusted text.
+    """
     app = comment.get("performed_via_github_app") or {}
     if app.get("id") != app_id:
         return None
@@ -57,8 +59,7 @@ def active_request(comments, app_id, stage, head_sha):
 
 
 def resume_record(api, dispatch, app_id, repository, pr_number):
-    # A contributor can copy the command and the hidden record, so the
-    # dispatch and the stored request must both come from the configured app.
+    """Resume only an app-authored dispatch for a signed waiting record on this PR."""
     app = dispatch.get("performed_via_github_app") or {}
     match = re.fullmatch(r"/ai-review-resume ([0-9]+)", dispatch.get("body") or "")
     if app.get("id") != app_id or not match:
@@ -85,23 +86,31 @@ def register(api, app_id, pr_number, request, pr):
     if existing:
         old = parse_record(existing, app_id)
         review_run_id = old.get("review_run_id")
-        if old["state"] == "waiting":
+        if old.get("base_ref") != request.get("base_ref"):
+            old["state"] = "done"
+            api.update(
+                existing["id"],
+                record_body(old, "The pull request changed base; review skipped."),
+            )
+        elif old["state"] == "waiting":
             # A failed update or a lost completion event can leave CI finished
             # while the request still says waiting. Recheck the same record.
             old["review_run_id"] = request.get("review_run_id")
             request.clear()
             request.update(old)
             return check_ci(api, existing["id"], request, pr)
-        if not review_run_id:
-            return "duplicate", None, None
-        # A workflow can fail before its cleanup job. Recover on the next
-        # request only after GitHub confirms that workflow is no longer running.
-        if api.workflow_run(review_run_id)["status"] != "completed":
-            return "duplicate", None, None
-        old["state"] = "done"
-        api.update(
-            existing["id"], record_body(old, "Previous review ended without cleanup.")
-        )
+        else:
+            if not review_run_id:
+                return "duplicate", None, None
+            # A workflow can fail before its cleanup job. Recover on the next
+            # request only after GitHub confirms that workflow is no longer running.
+            if api.workflow_run(review_run_id)["status"] != "completed":
+                return "duplicate", None, None
+            old["state"] = "done"
+            api.update(
+                existing["id"],
+                record_body(old, "Previous review ended without cleanup."),
+            )
     request = {**request, "state": "waiting"}
     # Bind the signed request to its actual comment ID before checking CI.
     # A completion during registration is caught by the subsequent CI check.
@@ -116,7 +125,7 @@ def resume(api, comment, app_id, pr, review_run_id=None):
     if not request or request.get("state") != "waiting":
         return "ignored", None, None
     request["review_run_id"] = review_run_id
-    if pr["state"] != "open" or pr["head"]["sha"] != request["head_sha"]:
+    if not is_current(pr, request):
         request["state"] = "done"
         api.update(
             comment["id"],
@@ -139,7 +148,7 @@ def coordinate(
     request["review_run_id"] = review_run_id
     pr = api.pull(pr_number)
     if dispatch is None:
-        if pr["state"] != "open" or pr["head"]["sha"] != request["head_sha"]:
+        if not is_current(pr, request):
             api.create(pr_number, "The pull request changed or closed; review skipped.")
             return {}
         state, record_id, run = register(api, app_id, pr_number, request, pr)
@@ -180,13 +189,22 @@ def finish(api, app_id, pr_number, comment_id, publication_result):
         return
     pr = api.pull(pr_number)
     request["state"] = "done"
-    if pr["state"] != "open" or pr["head"]["sha"] != request["head_sha"]:
+    if not is_current(pr, request):
         message = "The pull request changed or closed; review skipped."
     elif publication_result == "success":
         message = "CI-aware review completed."
     else:
         message = "CI-aware review did not complete. Request another review."
     api.update(comment_id, record_body(request, message))
+
+
+def is_current(pr, request):
+    """Reject a retargeted PR even when its head commit has not changed."""
+    return (
+        pr["state"] == "open"
+        and pr["head"]["sha"] == request["head_sha"]
+        and pr.get("base", {}).get("ref") == request.get("base_ref")
+    )
 
 
 def check_ci(api, comment_id, request, pr):
@@ -197,13 +215,13 @@ def check_ci(api, comment_id, request, pr):
             run = api.run_attempt(request["run_id"], request["attempt"])
         else:
             run = api.ci_run(pr)
-    except AmbiguousCIError:
+    except AmbiguousCIError as error:
         request["state"] = "done"
         api.update(
             comment_id,
             record_body(
                 request,
-                "CI could match multiple pull requests. Request a new review when the run is unambiguous.",
+                f"{error}. Request a new review when CI matches this pull request.",
             ),
         )
         raise
@@ -221,8 +239,6 @@ def check_ci(api, comment_id, request, pr):
             record_body(request, "No matching CI run. Request a new review."),
         )
         return "stopped", comment_id, None
-    # An ordinary CI failure still provides useful review evidence. Other
-    # completed outcomes stop the request rather than hiding missing coverage.
     state = classify(run)
     request["state"] = {"ready": "reviewing", "waiting": "waiting", "stopped": "done"}[
         state
@@ -261,8 +277,7 @@ class GitHub:
         return gh(endpoint)[0]
 
     def pulls_for_run(self, run):
-        # GitHub leaves pull_requests empty for fork runs. Query by the source
-        # repository and branch so those requests can still be resumed.
+        """Find candidate PRs by source branch, including forks GitHub omits from the run."""
         numbers = {item["number"] for item in run.get("pull_requests", [])}
         source = run.get("head_repository") or {}
         full_name = source.get("full_name", "")
@@ -300,6 +315,7 @@ class GitHub:
         return json.loads(output)
 
     def ci_run(self, pr):
+        """Find the latest primary run without mistaking a shared head commit for a unique PR."""
         sha = pr["head"]["sha"]
         endpoint = (
             f"repos/{self.repository}/actions/workflows/ci.yml/runs"
@@ -308,12 +324,23 @@ class GitHub:
         runs = [run for page in gh(endpoint) for run in page["workflow_runs"]]
         run = select_run(runs, pr)
         if run:
-            # GitHub's run associations can list PRs sharing a head commit,
-            # rather than identifying which PR actually triggered the run.
             candidates = [self.pull(item["number"]) for item in self.pulls_for_run(run)]
             matches = [item for item in candidates if item["head"]["sha"] == sha]
             if len(matches) != 1 or matches[0]["number"] != pr["number"]:
                 raise AmbiguousCIError(
                     "CI run cannot be uniquely matched to multiple pull requests"
                 )
+            # A run for the same head can predate a retarget and test the old
+            # base. GitHub's current PR association does not establish its base.
+            endpoint = (
+                f"repos/{self.repository}/issues/{pr['number']}/events?per_page=100"
+            )
+            events = [event for page in gh(endpoint) for event in page]
+            if any(
+                event.get("event")
+                in ("base_ref_changed", "automatic_base_change_succeeded")
+                and event["created_at"] >= run["created_at"]
+                for event in events
+            ):
+                raise AmbiguousCIError("CI run predates a base branch change")
         return run

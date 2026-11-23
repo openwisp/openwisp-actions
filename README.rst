@@ -464,38 +464,19 @@ the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
 missing, the review notes it in its summary. Each review is limited to 50
 minutes, and the model is told about the limit so it replies in time.
 
-Callers can opt in to CI-aware reviews with the reusable workflow's
-``wait_for_ci`` input. The default is ``false``: reviews run without
-waiting and the published review says CI was not checked or awaited. See
-`CI standardization
+CI-aware reviews
+++++++++++++++++
+
+To opt in, use ``.github/workflows/ci.yml`` for primary CI and follow the
+`example caller <.github/workflows/bot-ai-review.yml>`_ for
+``wait_for_ci`` and the completion trigger. The GitHub App needs Actions
+read and pull request write permissions.
+
+With opt-in, reviews wait for CI to finish, not to pass. If the bot cannot
+use the run, it says why; request a new review once CI is available.
+Without opt-in, reviews run without waiting and say CI was not checked. If
+a review reports missing CI files, see `CI standardization (#39)
 <https://github.com/openwisp/openwisp-actions/issues/39>`_.
-
-When enabled, the bot waits for the primary ``.github/workflows/ci.yml``
-run for the requested pull request and head commit. It reviews after the
-entire run succeeds or fails, with that attempt's job results and
-available failed-job excerpts. A queued retry is included in the wait; a
-retry started after the review begins does not restart it. If the run is
-missing, cancelled or timed out, the bot reports the problem and stops.
-Request the review again after CI is available. Repeated commands for the
-same stage and commit keep the existing request while it is waiting or
-running.
-
-The caller must listen for ``workflow_run: completed`` on the default
-branch, and forward those events to the reusable workflow. See this
-repository's `AI review caller <.github/workflows/bot-ai-review.yml>`_.
-The bot stores the authorized request in an app-authored comment and uses
-a second app-authored comment to resume it. It signs the stored request
-with the GitHub App private key because other bots using the same app can
-post untrusted text. If the private key is rotated while a request is
-waiting, request the review again. The GitHub App needs pull request write
-and Actions read permissions. CI log text is untrusted; PR code is not run
-by the completion handler.
-
-Early in the review, the bot checks the trusted base revision for
-``.github/workflows/ci.yml`` and ``install-ci-deps.sh``. It reports
-missing files or an unavailable check in the published review. These file
-checks do not verify matrix selection, installer behavior, or cache
-configuration.
 
 Review flow
 +++++++++++
@@ -506,10 +487,9 @@ The `reusable AI review workflow
 .. code-block:: mermaid
 
     flowchart LR
-      C["Member requests a review"] --> G["Gate: check command and membership"]
-      G --> W["Optional: wait for primary CI without a runner"]
-      W --> R["Review: fetch PR and CI data and run the model in a sandbox"]
+      C["Member requests a review"] --> G["Gate: check command and membership, read PR and guidance"]
       G --> A["Acknowledge: add eyes reaction"]
+      G --> R["Review: fetch PR data and run the model in a sandbox"]
       R --> F["Upload findings.json"]
       F --> P["Publish review and dismiss superseded change requests"]
       A --> X["React: rocket or confused"]

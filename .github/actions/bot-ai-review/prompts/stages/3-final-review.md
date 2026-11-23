@@ -20,7 +20,10 @@ Write the summary as three sections, "Addressed", "Outstanding" and
 "Unclear", each with one short bullet per finding, or "None" when a
 section is empty. Use the exact headings shown below. For "Ready to merge",
 write exactly "- None" under both "Outstanding" and "Unclear". If either
-section has a finding or cannot be determined, do not approve.
+section has a finding or cannot be determined, do not approve. Add an
+optional "##### Verification" section after "Unclear" for relevant
+verification limitations, separate from questions that could change the
+verdict.
 
 Add line comments only for new critical issues, and for outstanding
 findings whose earlier thread is resolved or outdated. Do not repeat
@@ -50,5 +53,10 @@ Reply with ONLY this JSON and nothing else:
                "body": "<the problem, why it matters, and what to do>"}]}
 ```
 
-Use "Needs changes" when any finding is outstanding or there is a new P1
-or P2 issue. Use "Inconclusive" when the status cannot be determined.
+Use "Ready to merge" when the review is complete, no findings are
+outstanding and no material question remains. A test you could not run is
+not by itself a reason for "Inconclusive". Required CI checks still govern
+whether the pull request can merge. Use "Needs changes" when any finding is
+outstanding or there is a new P1 or P2 issue. Use "Inconclusive" when a
+specific gap could change the verdict, such as an unreadable diff or an
+earlier finding whose fix cannot be confirmed. Explain the gap in "Unclear".

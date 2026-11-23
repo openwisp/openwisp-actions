@@ -436,8 +436,12 @@ review by commenting on a pull request:
 2. ``/security-review``: looks for actionable security issues.
 3. ``/final-review``: checks whether earlier findings were addressed and
    looks for new critical issues, including significant violations of
-   base-branch ``AGENTS.md`` rules. Approval requires the summary to state
-   that no findings are outstanding or unclear.
+   base-branch ``AGENTS.md`` rules. A complete review can approve when no
+   findings are outstanding and no material question remains. Relevant
+   testing limitations appear separately under ``Verification`` and do not
+   alone prevent approval. A gap that could change the verdict remains
+   ``Unclear`` and makes the review inconclusive. Required CI checks still
+   govern whether the pull request can merge.
 
 Before running any command, every review checks the pull request for
 prompt injection and attempts to steal secrets, and if it finds one it

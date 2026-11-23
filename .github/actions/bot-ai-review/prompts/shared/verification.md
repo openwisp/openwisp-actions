@@ -28,8 +28,10 @@ Verify your findings before reporting them, as a maintainer would:
   visible to your file tools, so print them from the command if needed.
 - The temporary copy has no Git metadata. Use the attached diff instead of
   Git commands to inspect the changes.
-- If a command is blocked or cannot run, add a summary bullet:
-  "Not verified: `<command>`: <reason>".
+- Report relevant commands that could not run as summary bullets:
+  "Not verified: `<command>`: <reason>". Omit failed setup attempts that
+  were worked around and did not affect what was verified. Never say a
+  test passed if it did not run.
 
 For each substantial finding, explain in plain language who does what,
 what goes wrong, and why it matters. For timing problems, show the steps

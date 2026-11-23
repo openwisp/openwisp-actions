@@ -143,17 +143,22 @@ def final_summary_clear(summary):
     for line in summary.splitlines(keepends=True):
         if fence is None:
             match = re.fullmatch(
-                r"##### (Addressed|Outstanding|Unclear)[ \t]*", line.rstrip("\r\n")
+                r"##### (Addressed|Outstanding|Unclear|Verification)[ \t]*",
+                line.rstrip("\r\n"),
             )
             if match:
                 headings.append((match.group(1), offset, offset + len(line)))
         fence = fence_state(line, fence)
         offset += len(line)
-    if [heading[0] for heading in headings] != [
-        "Addressed",
-        "Outstanding",
-        "Unclear",
-    ] or summary[: headings[0][1]].strip():
+    names = [heading[0] for heading in headings]
+    if (
+        names
+        not in (
+            ["Addressed", "Outstanding", "Unclear"],
+            ["Addressed", "Outstanding", "Unclear", "Verification"],
+        )
+        or summary[: headings[0][1]].strip()
+    ):
         return False
     outstanding_start, unclear_start, unclear_body = (
         headings[1][2],
@@ -161,7 +166,8 @@ def final_summary_clear(summary):
         headings[2][2],
     )
     outstanding = summary[outstanding_start:unclear_start].strip()
-    unclear = summary[unclear_body:].strip()
+    verification_start = headings[3][1] if len(headings) == 4 else len(summary)
+    unclear = summary[unclear_body:verification_start].strip()
     return outstanding in ("None", "- None") and unclear in ("None", "- None")
 
 

@@ -652,6 +652,47 @@ class TestMain(unittest.TestCase):
         result = self.run_main(output, stage="final-review")
         self.assertEqual(result["event"], "approve")
 
+    def test_final_review_can_approve_with_verification_limitation(self):
+        summary = FINAL_CLEAR + "\n\n##### Verification\n- Browser tests could not run."
+        output = json.dumps(
+            {"verdict": "Ready to merge", "title": "T", "summary": summary}
+        )
+        result = self.run_main(output, stage="final-review")
+        self.assertEqual(result["event"], "approve")
+        self.assertEqual(result["summary"], summary)
+
+    def test_verification_section_does_not_hide_unresolved_findings(self):
+        verification = "\n\n##### Verification\n- Browser tests could not run."
+        summaries = (
+            FINAL_CLEAR.replace(
+                "##### Outstanding\n- None", "##### Outstanding\n- Bug remains"
+            )
+            + verification,
+            FINAL_CLEAR.replace(
+                "##### Unclear\n- None", "##### Unclear\n- Fix unconfirmed"
+            )
+            + verification,
+            FINAL_CLEAR + verification + "\n\n##### Outstanding\n- Bug remains",
+            FINAL_CLEAR + verification + "\n\n##### Verification\n- Another limitation",
+        )
+        for summary in summaries:
+            with self.subTest(summary=summary):
+                output = json.dumps(
+                    {"verdict": "Ready to merge", "title": "T", "summary": summary}
+                )
+                result = self.run_main(output, stage="final-review")
+                self.assertEqual(result["verdict"], "Review not completed")
+                self.assertEqual(result["event"], "comment")
+
+    def test_inconclusive_final_review_is_not_automatically_approved(self):
+        summary = FINAL_CLEAR + "\n\n##### Verification\n- Browser tests could not run."
+        output = json.dumps(
+            {"verdict": "Inconclusive", "title": "T", "summary": summary}
+        )
+        result = self.run_main(output, stage="final-review")
+        self.assertEqual(result["verdict"], "Inconclusive")
+        self.assertEqual(result["event"], "comment")
+
 
 if __name__ == "__main__":
     unittest.main()

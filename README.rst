@@ -474,8 +474,11 @@ read and pull request write permissions.
 
 With opt-in, reviews wait for CI to finish, not to pass. If the bot cannot
 use the run, it says why; request a new review once CI is available.
-Without opt-in, reviews run without waiting and say CI was not checked. If
-a review reports missing CI files, see `CI standardization (#39)
+Completion scans and failed-log collection have resource limits. If a
+waiting review does not resume, check the completion workflow and request
+the review again. Without opt-in, reviews run without waiting and say CI
+was not checked. If a review reports missing CI files, see `CI
+standardization (#39)
 <https://github.com/openwisp/openwisp-actions/issues/39>`_.
 
 Review flow

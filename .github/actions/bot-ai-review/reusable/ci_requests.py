@@ -170,16 +170,27 @@ def wake(api, app_id, run):
         or run.get("event") != "pull_request"
     ):
         return
-    for pr in api.pulls_for_run(run):
-        for comment in api.comments(pr["number"]):
+    created_at = run.get("created_at")
+    if not created_at:
+        raise ValueError("CI run creation time is unavailable")
+    for pr_number in api.wake_candidates(run):
+        try:
+            comments = api.wake_comments(pr_number, created_at)
+        except (RuntimeError, subprocess.SubprocessError, json.JSONDecodeError):
+            api.create(
+                pr_number,
+                "CI completion could not check review requests. Request another review if needed.",
+            )
+            continue
+        for comment in comments:
             request = parse_record(comment, app_id)
             if (
                 request
                 and request.get("state") == "waiting"
                 and request.get("head_sha") == run["head_sha"]
-                and request.get("pr_number") == pr["number"]
+                and request.get("pr_number") == pr_number
             ):
-                api.create(pr["number"], f"/ai-review-resume {comment['id']}")
+                api.create(pr_number, f"/ai-review-resume {comment['id']}")
 
 
 def finish(api, app_id, pr_number, comment_id, publication_result):
@@ -284,6 +295,23 @@ def check_ci(api, comment_id, request, pr):
     return state, comment_id, run
 
 
+def gh_page(endpoint):
+    """Bound each wake lookup so a stalled API cannot occupy the entire handler."""
+    output = subprocess.check_output(["gh", "api", endpoint], text=True, timeout=10)
+    return json.loads(output)
+
+
+def bounded_pages(endpoint, limit):
+    """Fail visibly instead of silently ignoring records beyond the scan limit."""
+    items = []
+    for page in range(1, limit + 1):
+        result = gh_page(f"{endpoint}&page={page}")
+        items.extend(result)
+        if len(result) < 100:
+            return items
+    raise RuntimeError("CI completion scan limit reached; request another review")
+
+
 class GitHub:
     def __init__(self, repository):
         self.repository = repository
@@ -291,6 +319,47 @@ class GitHub:
     def comments(self, pr_number):
         endpoint = f"repos/{self.repository}/issues/{pr_number}/comments?per_page=100"
         return [comment for page in gh(endpoint) for comment in page]
+
+    def wake_comments(self, pr_number, created_at):
+        # A waiting record is created after its selected CI run exists.
+        query = urlencode({"per_page": 100, "since": created_at})
+        endpoint = f"repos/{self.repository}/issues/{pr_number}/comments?{query}"
+        return bounded_pages(endpoint, 3)
+
+    def wake_candidates(self, run):
+        """Keep PRs that existed during the run, including those closed afterward."""
+        created_at = run["created_at"]
+        source = (run.get("head_repository") or {}).get("full_name", "")
+        associated = {item["number"] for item in run.get("pull_requests", [])}
+        candidates = {}
+        if "/" in source and run.get("head_branch"):
+            query = urlencode(
+                {
+                    "state": "all",
+                    "head": f"{source.split('/')[0]}:{run['head_branch']}",
+                    "per_page": 100,
+                }
+            )
+            for pr in bounded_pages(f"repos/{self.repository}/pulls?{query}", 5):
+                repo = pr["head"].get("repo") or {}
+                if repo.get("full_name", "").lower() == source.lower():
+                    candidates[pr["number"]] = pr
+        if len(associated) > 20:
+            raise RuntimeError(
+                "CI completion candidate limit reached; request another review"
+            )
+        for number in associated - candidates.keys():
+            candidates[number] = self.pull(number)
+        numbers = [
+            number
+            for number, pr in candidates.items()
+            if could_have_triggered(pr, created_at)
+        ]
+        if len(numbers) > 20:
+            raise RuntimeError(
+                "CI completion candidate limit reached; request another review"
+            )
+        return sorted(numbers)
 
     def comment(self, comment_id):
         return gh(f"repos/{self.repository}/issues/comments/{comment_id}")[0]

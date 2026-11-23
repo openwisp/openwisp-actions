@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "reu
 
 from ci_results import (  # noqa: E402
     classify,
+    failed_logs,
     gh,
     matching_runs,
     results,
@@ -161,3 +162,11 @@ class TestCIRuns(unittest.TestCase):
         run = {**self.run, "head_branch": "other", "pull_requests": [{"number": 17}]}
         self.assertEqual(matching_runs([run], self.pr), [])
         self.assertIsNone(select_run([run], self.pr))
+
+    def test_failed_log_collection_has_a_time_limit(self):
+        with patch("ci_results.subprocess.run") as run:
+            run.return_value.returncode = 124
+            self.assertIn("unavailable", failed_logs("owner/repo", 3, 1).lower())
+        self.assertEqual(
+            run.call_args.args[0][:3], ["timeout", "--kill-after=5s", "60s"]
+        )

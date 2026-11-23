@@ -37,7 +37,22 @@ fi
 FOUND_ERROR=false
 for JOB_ID in $JOB_IDS; do
   echo "Processing job $JOB_ID"
-  if ! gh api --allow-escape-sequences "repos/$REPO/actions/jobs/$JOB_ID/logs" > job_logs.txt; then
+  # A small final excerpt does not bound the download or awk's group buffer.
+  # Limit raw input for review requests before writing or parsing it.
+  if [ -n "${MAX_LOG_BYTES:-}" ]; then
+    FETCHED=true
+    gh api --allow-escape-sequences "repos/$REPO/actions/jobs/$JOB_ID/logs" \
+      | head -c 1048577 > job_logs.txt || FETCHED=false
+    if [ "$(wc -c < job_logs.txt)" -gt 1048576 ]; then
+      printf 'Job %s logs truncated.\n' "$JOB_ID" | head -c "$JOB_LIMIT" >> failed_logs.txt
+      FOUND_ERROR=true
+      continue
+    fi
+  else
+    FETCHED=true
+    gh api --allow-escape-sequences "repos/$REPO/actions/jobs/$JOB_ID/logs" > job_logs.txt || FETCHED=false
+  fi
+  if [ "$FETCHED" != true ]; then
     if [ -n "${MAX_LOG_BYTES:-}" ]; then
       printf 'Job %s logs unavailable.\n' "$JOB_ID" | head -c "$JOB_LIMIT" >> failed_logs.txt
     else

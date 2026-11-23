@@ -72,7 +72,11 @@ def failed_logs(repository, run_id, attempt):
     }
     with tempfile.TemporaryDirectory() as directory:
         result = subprocess.run(
-            ["bash", str(script)], cwd=directory, env=env, capture_output=True
+            ["timeout", "--kill-after=5s", "60s", "bash", str(script)],
+            cwd=directory,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         path = Path(directory) / "failed_logs.txt"
         if result.returncode != 0 or not path.is_file():

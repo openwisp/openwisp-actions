@@ -12,6 +12,7 @@ from ci_requests import (  # noqa: E402
     AmbiguousCIError,
     GitHub,
     active_request,
+    bounded_pages,
     coordinate,
     could_have_triggered,
     finish,
@@ -288,13 +289,14 @@ class TestCIRequests(unittest.TestCase):
             "path": ".github/workflows/ci.yml",
             "event": "pull_request",
             "head_sha": "a" * 40,
+            "created_at": "2026-01-01T00:00:00Z",
         }
 
         class API:
-            def pulls_for_run(self, run):
-                return [{"number": 17}]
+            def wake_candidates(self, run):
+                return [17]
 
-            def comments(self, number):
+            def wake_comments(self, number, created_at):
                 return [
                     self_comment,
                     {**self_comment, "performed_via_github_app": None},
@@ -807,6 +809,7 @@ class TestCIRequests(unittest.TestCase):
             "path": ".github/workflows/ci.yml",
             "event": "pull_request",
             "head_sha": "a" * 40,
+            "created_at": "2026-01-01T00:00:00Z",
         }
         pr = {"number": 17, "state": "open", "head": {"sha": "a" * 40}}
 
@@ -817,8 +820,11 @@ class TestCIRequests(unittest.TestCase):
             def pull(self, number):
                 return pr
 
-            def pulls_for_run(self, completed):
-                return [pr]
+            def wake_candidates(self, completed):
+                return [17]
+
+            def wake_comments(self, number, created_at):
+                return self.items[:]
 
             def comments(self, number):
                 return self.items[:]
@@ -988,3 +994,61 @@ class TestCIRequests(unittest.TestCase):
         ):
             with self.assertRaises(AmbiguousCIError):
                 api.ci_run(pr)
+
+    def test_wake_candidates_exclude_prs_closed_before_the_run(self):
+        run = {
+            "created_at": "2026-01-02T00:00:00Z",
+            "head_repository": {"full_name": "someone/repo"},
+            "head_branch": "fix",
+            "pull_requests": [],
+        }
+        old = {
+            "number": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "closed_at": "2026-01-01T12:00:00Z",
+            "head": {"repo": {"full_name": "someone/repo"}},
+        }
+        current = {**old, "number": 2, "closed_at": "2026-01-03T00:00:00Z"}
+        with patch("ci_requests.gh_page", return_value=[old, current]):
+            self.assertEqual(GitHub("openwisp/repo").wake_candidates(run), [2])
+
+    def test_wake_comments_start_at_run_creation(self):
+        with patch("ci_requests.gh_page", return_value=[]) as page:
+            GitHub("openwisp/repo").wake_comments(17, "2026-01-02T00:00:00Z")
+        self.assertIn("since=2026-01-02T00%3A00%3A00Z", page.call_args.args[0])
+
+    def test_bounded_scan_reports_when_it_cannot_finish(self):
+        with patch("ci_requests.gh_page", return_value=[{}] * 100) as page:
+            with self.assertRaisesRegex(RuntimeError, "scan limit"):
+                bounded_pages("example?per_page=100", 2)
+        self.assertEqual(page.call_count, 2)
+
+    def test_wake_reports_incomplete_comment_scan_and_checks_other_candidates(self):
+        run = {
+            "path": ".github/workflows/ci.yml",
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        comment = self.comment
+
+        class API:
+            def __init__(self):
+                self.messages = []
+
+            def wake_candidates(self, run):
+                return [16, 17]
+
+            def wake_comments(self, number, created_at):
+                if number == 16:
+                    raise RuntimeError("CI completion scan limit reached")
+                return [comment]
+
+            def create(self, number, body):
+                self.messages.append((number, body))
+
+        api = API()
+        wake(api, 42, run)
+        self.assertIn("could not check", api.messages[0][1].lower())
+        self.assertEqual(api.messages[0][0], 16)
+        self.assertEqual(api.messages[1], (17, "/ai-review-resume 9"))

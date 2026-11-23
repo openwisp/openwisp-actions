@@ -37,6 +37,9 @@ if [ "$STAGE" = review ]; then
   FILES+=(--file "$DATA_DIR/threat-model.rst")
 fi
 FILES+=(--file "$DATA_DIR/context.json" --file "$DATA_DIR/history.json")
+if [ -s "$DATA_DIR/ci-results.json" ]; then
+  FILES+=(--file "$DATA_DIR/ci-results.json")
+fi
 REVIEW_MINUTES=50
 PROMPT=$("$DIR/build_prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
   "$RUNNER_TEMP/shared-guidance/guidance.md")

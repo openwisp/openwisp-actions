@@ -2,7 +2,12 @@
 # Collect failed job log sections between GitHub group and error markers.
 set -eo pipefail
 echo "Getting failed jobs for run $RUN_ID..."
-if ! JOB_IDS=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+JOBS_ENDPOINT="repos/$REPO/actions/runs/$RUN_ID"
+# The reviewer needs logs from the attempt it selected, even if CI is retried.
+if [ -n "${ATTEMPT:-}" ]; then
+  JOBS_ENDPOINT+="/attempts/$ATTEMPT"
+fi
+if ! JOB_IDS=$(gh api --paginate "$JOBS_ENDPOINT/jobs" \
   -q '.jobs[] | select(.conclusion=="failure") | .id'); then
   echo "Could not fetch failed jobs for run $RUN_ID." > failed_logs.txt
   exit 0
@@ -39,4 +44,10 @@ for JOB_ID in $JOB_IDS; do
 done
 if [ ! -s failed_logs.txt ] || ! grep -q "##\[error\]" failed_logs.txt; then
   echo "Failed jobs found but logs unavailable." > failed_logs.txt
+fi
+# Keep the existing failure-bot output unless a caller requests a size limit.
+if [ -n "${MAX_LOG_BYTES:-}" ] && [ "$(wc -c < failed_logs.txt)" -gt "$MAX_LOG_BYTES" ]; then
+  head -c "$MAX_LOG_BYTES" failed_logs.txt > failed_logs.truncated
+  printf '\n[Failed-job excerpts truncated.]\n' >> failed_logs.truncated
+  mv failed_logs.truncated failed_logs.txt
 fi

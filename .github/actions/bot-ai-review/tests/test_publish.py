@@ -30,6 +30,7 @@ FAKE_GH = """#!/usr/bin/env bash
 echo "gh $*" >>"$STATE/log"
 case "$*" in
   *"--jq .head.sha"*) echo "$REMOTE_HEAD" ;;
+  *"--jq .state"*) echo "${REMOTE_STATE:-open}" ;;
   "api --paginate "*) cat "$STATE/reviews.json" ;;
   "api -X POST "*) cat >"$STATE/review.json" ;;
 esac
@@ -58,7 +59,15 @@ COMMENT = {"file": "a.py", "line": 1, "body": "x"}
 
 
 def publish(
-    findings, comments=(COMMENT,), remote_head=HEAD_SHA, fail_push=False, stage="review"
+    findings,
+    comments=(COMMENT,),
+    remote_head=HEAD_SHA,
+    fail_push=False,
+    stage="review",
+    remote_state="open",
+    ci_aware=False,
+    ci_standard_status="unknown",
+    ci_standard_missing="",
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
@@ -87,6 +96,10 @@ def publish(
             "PR_NUMBER": "1",
             "HEAD_SHA": HEAD_SHA,
             "REMOTE_HEAD": remote_head,
+            "REMOTE_STATE": remote_state,
+            "CI_AWARE": str(ci_aware).lower(),
+            "CI_STANDARD_STATUS": ci_standard_status,
+            "CI_STANDARD_MISSING": ci_standard_missing,
             "FAIL_PUSH": str(int(fail_push)),
             "STAGE": stage,
             "MODEL": "provider/model",
@@ -100,7 +113,7 @@ def publish(
                 review = json.load(f)
         else:
             review = None
-        if remote_head != HEAD_SHA or fail_push:
+        if remote_head != HEAD_SHA or fail_push or remote_state != "open":
             return result.returncode, log
         assert result.returncode == 0, result.stderr
         return log, review
@@ -230,6 +243,42 @@ class TestPublish(unittest.TestCase):
                 findings, comments=findings["comments"], stage="final-review"
             )
             self.assertEqual(dismissals(log), [])
+
+    def test_review_discloses_when_ci_was_not_awaited(self):
+        _, review = publish(APPROVED, comments=(), stage="final-review")
+        self.assertEqual(review["event"], "APPROVE")
+        self.assertIn("CI was not checked or awaited", review["body"])
+        self.assertIn(
+            "https://github.com/openwisp/openwisp-actions/issues/39", review["body"]
+        )
+
+    def test_closed_pull_request_stops_publication(self):
+        status, log = publish(APPROVED, comments=(), remote_state="closed")
+        self.assertNotEqual(status, 0)
+        self.assertFalse(any("api -X POST" in line for line in log))
+
+    def test_ci_aware_review_omits_fallback_notice(self):
+        _, review = publish(APPROVED, comments=(), ci_aware=True)
+        self.assertNotIn("CI was not checked or awaited", review["body"])
+
+    def test_review_reports_missing_ci_entry_points_without_changing_verdict(self):
+        _, review = publish(
+            APPROVED,
+            comments=(),
+            ci_standard_status="missing",
+            ci_standard_missing=".github/workflows/ci.yml, install-ci-deps.sh",
+        )
+        self.assertEqual(review["event"], "APPROVE")
+        self.assertIn(".github/workflows/ci.yml, install-ci-deps.sh", review["body"])
+
+    def test_review_distinguishes_unknown_check_from_missing_files(self):
+        _, review = publish(APPROVED, comments=(), ci_standard_status="unknown")
+        self.assertIn("could not be checked", review["body"])
+
+    def test_review_does_not_claim_present_files_are_missing(self):
+        _, review = publish(APPROVED, comments=(), ci_standard_status="present")
+        self.assertNotIn("Missing CI entry points", review["body"])
+        self.assertNotIn("could not be checked", review["body"])
 
 
 if __name__ == "__main__":

@@ -14,6 +14,24 @@ BODY="AI $STAGE of $HEAD_SHA provided by \`${MODEL%%/*}\` / \`${MODEL#*/}\`
 **Verdict: $VERDICT**
 
 "
+if [ "${CI_AWARE:-false}" != true ]; then
+  BODY+="
+CI was not checked or awaited. Maintainers can enable CI-aware reviews:
+https://github.com/openwisp/openwisp-actions/issues/39
+
+"
+fi
+case "${CI_STANDARD_STATUS:-unknown}" in
+  missing)
+    BODY+="Missing CI entry points on the base branch: $CI_STANDARD_MISSING.
+See https://github.com/openwisp/openwisp-actions/issues/39.
+
+" ;;
+  unknown)
+    BODY+="CI entry points could not be checked on the base branch.
+
+" ;;
+esac
 if [ -n "$TITLE" ]; then
   BODY+="$TITLE
 
@@ -23,8 +41,9 @@ BODY+=$SUMMARY
 COMMENTS="$RUNNER_TEMP/comments.json"
 jq '.comments' "$FINDINGS" >"$COMMENTS"
 CURRENT_SHA=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
-if [ "$CURRENT_SHA" != "$HEAD_SHA" ]; then
-  echo "::error::The pull request changed during the review, request it again"
+CURRENT_STATE=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.state')
+if [ "$CURRENT_SHA" != "$HEAD_SHA" ] || [ "$CURRENT_STATE" != open ]; then
+  echo "::error::The pull request changed or closed during the review, request it again"
   exit 1
 fi
 if [ "$(jq 'length' "$COMMENTS")" -eq 0 ]; then

@@ -226,3 +226,18 @@ def test_retry_reports_failed_rerun_without_notification(runner):
     assert (directory / "output").read_text() == "retried=false\n"
     assert len([call for call in calls if "-X" in call]) == 1
     assert not any(call[1:3] == ["pr", "comment"] for call in calls)
+
+
+def test_fetch_logs_selects_attempt_and_marks_truncated_output(runner):
+    directory, run = runner
+    logs = "##[group]test\n" + "x" * 200 + "\n##[error]failed\n"
+    result, calls = run(
+        "fetch_logs",
+        API_RESPONSE="17",
+        LOG_RESPONSE=logs,
+        ATTEMPT="2",
+        MAX_LOG_BYTES="40",
+    )
+    assert result.returncode == 0
+    assert "repos/example/repo/actions/runs/123/attempts/2/jobs" in calls[0]
+    assert "truncated" in (directory / "failed_logs.txt").read_text().lower()

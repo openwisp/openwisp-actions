@@ -37,6 +37,7 @@ fi
 FOUND_ERROR=false
 for JOB_ID in $JOB_IDS; do
   echo "Processing job $JOB_ID"
+  TRUNCATED=false
   # A small final excerpt does not bound the download or awk's group buffer.
   # Limit raw input for review requests before writing or parsing it.
   if [ -n "${MAX_LOG_BYTES:-}" ]; then
@@ -44,9 +45,10 @@ for JOB_ID in $JOB_IDS; do
     gh api --allow-escape-sequences "repos/$REPO/actions/jobs/$JOB_ID/logs" \
       | head -c 1048577 > job_logs.txt || FETCHED=false
     if [ "$(wc -c < job_logs.txt)" -gt 1048576 ]; then
-      printf 'Job %s logs truncated.\n' "$JOB_ID" | head -c "$JOB_LIMIT" >> failed_logs.txt
-      FOUND_ERROR=true
-      continue
+      # Keep any errors in the retained prefix and reserve room for the marker.
+      TRUNCATED=true
+      FETCHED=true
+      JOB_LIMIT=$((JOB_LIMIT - 12))
     fi
   else
     FETCHED=true
@@ -113,6 +115,11 @@ for JOB_ID in $JOB_IDS; do
     head -c "$JOB_LIMIT" job_limited.txt >> failed_logs.txt
   else
     cat job_excerpt.txt >> failed_logs.txt
+  fi
+  if [ "$TRUNCATED" = true ]; then
+    printf '[truncated]\n' >> failed_logs.txt
+    JOB_LIMIT=$((JOB_LIMIT + 12))
+    FOUND_ERROR=true
   fi
 done
 if [ ! -s failed_logs.txt ] || [ "$FOUND_ERROR" != true ]; then

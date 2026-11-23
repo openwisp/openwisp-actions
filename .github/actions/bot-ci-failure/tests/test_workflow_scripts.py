@@ -31,6 +31,8 @@ def runner(tmp_path):
         "        if job == os.environ.get('FAIL_LOG_JOB'):\n"
         "            sys.exit(1)\n"
         "        if os.environ.get('LARGE_LOG'):\n"
+        "            if os.environ.get('LARGE_LOG_ERROR'):\n"
+        "                print('##[group]test\\n##[error]early failure', flush=True)\n"
         "            print('x' * 2000000)\n"
         "            sys.exit(0)\n"
         "        print(os.environ.get('LOG_RESPONSE_' + job, os.environ.get('LOG_RESPONSE', '')))\n"
@@ -344,3 +346,19 @@ def test_large_job_log_is_bounded_and_marked_incomplete(runner):
     assert result.returncode == 0
     assert (directory / "job_logs.txt").stat().st_size <= 1048577
     assert "truncated" in (directory / "failed_logs.txt").read_text().lower()
+
+
+def test_large_job_log_keeps_errors_in_the_bounded_prefix(runner):
+    directory, run = runner
+    result, _ = run(
+        "fetch_logs",
+        API_RESPONSE="17",
+        LARGE_LOG="1",
+        LARGE_LOG_ERROR="1",
+        MAX_LOG_BYTES="80",
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "early failure" in excerpt
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 80

@@ -34,6 +34,8 @@ def check(repository, base_sha):
     """Find missing CI entry points using at most three reads of the trusted base tree.
 
     PR files cannot establish whether the base branch adopted the convention.
+    We do not check dependency caches: CI setups differ, so checking them
+    reliably is not worth the cost unless it becomes a recurring problem.
     """
     root = tree(repository, base_sha)
     installer = entry(root, INSTALLER, "blob")

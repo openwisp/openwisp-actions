@@ -238,7 +238,7 @@ jobs:
           key: >-
             ${{ format('{0}-{1}-{2}-pip-{3}-{4}', runner.os, runner.arch,
                 steps.platform.outputs.image_os, steps.python.outputs.python-version,
-                hashFiles('requirements-test.txt', 'setup.py', 'install-ci-deps.sh')) }}
+                hashFiles('requirements-test.txt', 'requirements.txt', 'setup.py', 'install-ci-deps.sh')) }}
 
       - name: Restore Django cache
         if: steps.ci.outputs.django_version != ''

@@ -18,3 +18,12 @@ def test_review_continues_without_a_ci_installer():
     assert by_name["Install trusted CI dependencies"]["if"] == (
         "steps.ci.outcome == 'success'"
     )
+
+
+def test_python_cache_includes_runtime_requirements():
+    workflow = (
+        Path(__file__).resolve().parents[3] / "workflows/reusable-bot-ai-review.yml"
+    )
+    steps = yaml.safe_load(workflow.read_text())["jobs"]["review"]["steps"]
+    cache = next(step for step in steps if step.get("name") == "Restore Python cache")
+    assert "'requirements.txt'" in cache["with"]["key"]

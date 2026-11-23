@@ -963,3 +963,25 @@ class TestCIRequests(unittest.TestCase):
         ):
             with self.assertRaises(AmbiguousCIError):
                 api.ci_run(pr)
+
+    def test_newer_run_associated_with_another_pr_cannot_fall_back_to_old_run(self):
+        pr = {"number": 17, "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}}}
+        old = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}],
+        }
+        new = {**old, "id": 2, "pull_requests": [{"number": 18}]}
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", return_value=[{"workflow_runs": [old, new]}]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, {**pr, "number": 18}]
+        ):
+            with self.assertRaises(AmbiguousCIError):
+                api.ci_run(pr)

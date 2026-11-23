@@ -12,17 +12,8 @@ class AmbiguousCIError(ValueError):
 
 
 def matching_runs(runs, pr):
-    """Match the source and any unique PR association; GitHub omits associations for some forks."""
-    matches = []
-    for run in runs:
-        if not matches_source(run, pr):
-            continue
-        pull_requests = run.get("pull_requests") or []
-        if pull_requests:
-            if len(pull_requests) != 1 or pull_requests[0]["number"] != pr["number"]:
-                continue
-        matches.append(run)
-    return matches
+    """Match the source and SHA without relying on GitHub's changing PR associations."""
+    return [run for run in runs if matches_source(run, pr)]
 
 
 def matches_source(run, pr):
@@ -52,17 +43,7 @@ def select_run(runs, pr):
 
     A retry keeps the same run ID and changes its attempt number.
     """
-    for run in sorted(runs, key=lambda item: item["id"], reverse=True):
-        associations = run.get("pull_requests") or []
-        if (
-            matches_source(run, pr)
-            and len(associations) > 1
-            and any(item["number"] == pr["number"] for item in associations)
-        ):
-            return run
-        if matching_runs([run], pr):
-            return run
-    return None
+    return max(matching_runs(runs, pr), key=lambda run: run["id"], default=None)
 
 
 def gh(endpoint):

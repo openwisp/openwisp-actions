@@ -37,11 +37,13 @@ class TestCIRuns(unittest.TestCase):
     def test_matches_fork_when_github_omits_pull_request_list(self):
         self.assertEqual(matching_runs([self.run], self.pr), [self.run])
 
-    def test_does_not_match_another_fork_or_pull_request(self):
+    def test_matches_source_even_if_github_associates_another_pr(self):
         other_fork = {**self.run, "head_repository": {"id": 4}}
         other_pr = {**self.run, "pull_requests": [{"number": 18}]}
         other_sha = {**self.run, "head_sha": "b" * 40}
-        self.assertEqual(matching_runs([other_fork, other_pr, other_sha], self.pr), [])
+        self.assertEqual(
+            matching_runs([other_fork, other_pr, other_sha], self.pr), [other_pr]
+        )
 
     def test_ignores_non_pull_request_runs(self):
         self.assertEqual(matching_runs([{**self.run, "event": "push"}], self.pr), [])
@@ -127,7 +129,7 @@ class TestCIRuns(unittest.TestCase):
 
     def test_run_associated_with_multiple_prs_is_not_a_unique_match(self):
         ambiguous = {**self.run, "pull_requests": [{"number": 17}, {"number": 18}]}
-        self.assertEqual(matching_runs([ambiguous], self.pr), [])
+        self.assertEqual(matching_runs([ambiguous], self.pr), [ambiguous])
         self.assertEqual(
             select_run([{**self.run, "id": 2}, ambiguous], self.pr), ambiguous
         )
@@ -149,3 +151,8 @@ class TestCIRuns(unittest.TestCase):
         }
         self.assertEqual(matching_runs([run], self.pr), [])
         self.assertIsNone(select_run([run], self.pr))
+
+    def test_newer_source_run_is_not_skipped_when_github_lists_another_pr(self):
+        older = {**self.run, "id": 2, "pull_requests": [{"number": 17}]}
+        newer = {**self.run, "id": 3, "pull_requests": [{"number": 18}]}
+        self.assertEqual(select_run([older, newer], self.pr), newer)

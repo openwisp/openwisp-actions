@@ -156,3 +156,8 @@ class TestCIRuns(unittest.TestCase):
         older = {**self.run, "id": 2, "pull_requests": [{"number": 17}]}
         newer = {**self.run, "id": 3, "pull_requests": [{"number": 18}]}
         self.assertEqual(select_run([older, newer], self.pr), newer)
+
+    def test_run_from_another_source_branch_is_not_selected(self):
+        run = {**self.run, "head_branch": "other", "pull_requests": [{"number": 17}]}
+        self.assertEqual(matching_runs([run], self.pr), [])
+        self.assertIsNone(select_run([run], self.pr))

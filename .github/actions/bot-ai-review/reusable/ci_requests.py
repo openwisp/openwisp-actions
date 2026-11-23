@@ -315,7 +315,7 @@ class GitHub:
         return json.loads(output)
 
     def ci_run(self, pr):
-        """Find the latest primary run without mistaking a shared head commit for a unique PR."""
+        """Find the latest primary run only when its source branch identifies one PR."""
         sha = pr["head"]["sha"]
         endpoint = (
             f"repos/{self.repository}/actions/workflows/ci.yml/runs"
@@ -324,9 +324,8 @@ class GitHub:
         runs = [run for page in gh(endpoint) for run in page["workflow_runs"]]
         run = select_run(runs, pr)
         if run:
-            candidates = [self.pull(item["number"]) for item in self.pulls_for_run(run)]
-            matches = [item for item in candidates if item["head"]["sha"] == sha]
-            if len(matches) != 1 or matches[0]["number"] != pr["number"]:
+            candidates = self.pulls_for_run(run)
+            if len(candidates) != 1 or candidates[0]["number"] != pr["number"]:
                 raise AmbiguousCIError(
                     "CI run cannot be uniquely matched to multiple pull requests"
                 )

@@ -241,3 +241,4 @@ def test_fetch_logs_selects_attempt_and_marks_truncated_output(runner):
     assert result.returncode == 0
     assert "repos/example/repo/actions/runs/123/attempts/2/jobs" in calls[0]
     assert "truncated" in (directory / "failed_logs.txt").read_text().lower()
+    assert "##[error]failed" in (directory / "failed_logs.txt").read_text()

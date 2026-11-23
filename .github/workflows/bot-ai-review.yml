@@ -5,7 +5,7 @@ on:
   issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
   workflow_run:
-    workflows: ["*"]
+    workflows: ["**"]
     types: [completed]
 
 permissions: {}

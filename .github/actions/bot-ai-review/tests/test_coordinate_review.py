@@ -121,3 +121,10 @@ def test_resume_dispatch_requires_bot_author_before_entering_the_gate():
             step["if"] for step in gate["steps"] if step.get("name") == name
         )
         assert "github.event.comment.user.type == 'Bot'" in condition
+
+
+def test_completion_trigger_matches_names_with_slashes():
+    root = os.path.join(os.path.dirname(__file__), "../../../workflows")
+    with open(os.path.join(root, "bot-ai-review.yml")) as workflow:
+        config = yaml.load(workflow, Loader=yaml.BaseLoader)
+    assert config["on"]["workflow_run"]["workflows"] == ["**"]

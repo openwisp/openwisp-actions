@@ -47,7 +47,11 @@ if [ ! -s failed_logs.txt ] || ! grep -q "##\[error\]" failed_logs.txt; then
 fi
 # Keep the existing failure-bot output unless a caller requests a size limit.
 if [ -n "${MAX_LOG_BYTES:-}" ] && [ "$(wc -c < failed_logs.txt)" -gt "$MAX_LOG_BYTES" ]; then
-  head -c "$MAX_LOG_BYTES" failed_logs.txt > failed_logs.truncated
+  # Keep both the job header and the final error, which often follows a long test log.
+  START_BYTES=$((MAX_LOG_BYTES / 2))
+  END_BYTES=$((MAX_LOG_BYTES - START_BYTES))
+  head -c "$START_BYTES" failed_logs.txt > failed_logs.truncated
   printf '\n[Failed-job excerpts truncated.]\n' >> failed_logs.truncated
+  tail -c "$END_BYTES" failed_logs.txt >> failed_logs.truncated
   mv failed_logs.truncated failed_logs.txt
 fi

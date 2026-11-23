@@ -691,6 +691,25 @@ class TestCIRequests(unittest.TestCase):
         ):
             self.assertEqual(api.ci_run(pr), run)
 
+    def test_ci_run_is_ambiguous_when_another_pr_on_the_branch_has_moved(self):
+        pr = {"number": 17, "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}}}
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [{"number": 17}],
+        }
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh", return_value=[{"workflow_runs": [run]}]
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ):
+            with self.assertRaisesRegex(AmbiguousCIError, "multiple pull requests"):
+                api.ci_run(pr)
+
     def test_waiting_request_resumes_once_and_allows_a_fresh_request_after_finishing(
         self,
     ):

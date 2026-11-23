@@ -542,6 +542,19 @@ phase from the trusted base checkout before configuring model credentials,
 then runs the remaining installation as the reviewer. Pull request code is
 not used for either setup phase.
 
+Set ``AI_REVIEW_BROWSERS`` in the CI ``test`` job's ``env`` to ``chrome``,
+``firefox``, ``chrome,firefox``, or ``none``. Chrome includes a matching
+ChromeDriver. Firefox uses the Firefox and GeckoDriver already present on
+the GitHub-hosted runner. The review sandbox runs browser tests
+headlessly. For the existing Node.js pilot, a CI step using
+``setup-chrome`` also selects Chrome when no browser setting is provided.
+
+The privileged installer phase can install APT packages and other host
+tools, but the shared workflow currently restores only the pip and Yarn
+caches described above. It does not yet restore APT archives, Ansible
+collections, Docker layers, or OpenWrt SDK caches. Services, builds, and
+test execution remain separate from dependency installation.
+
 Repositories can expose their test runner through an executable
 ``./runtests``. The reviewer can pass supported test selectors to this
 entry point to run focused tests in its sandbox. Explicitly allowlist

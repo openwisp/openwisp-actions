@@ -216,6 +216,26 @@ def could_have_triggered(pr, run_created_at):
     )
 
 
+def was_open_at(events, run_created_at):
+    """Exclude a PR only when its history shows it was closed before the run."""
+    changes = [
+        event for event in events if event.get("event") in ("closed", "reopened")
+    ]
+    if not run_created_at or any(not event.get("created_at") for event in changes):
+        return True
+    if any(event["created_at"] == run_created_at for event in changes):
+        return True
+    earlier = [event for event in changes if event["created_at"] < run_created_at]
+    if not earlier:
+        return True
+    latest = max(event["created_at"] for event in earlier)
+    return any(
+        event["event"] == "reopened"
+        for event in earlier
+        if event["created_at"] == latest
+    )
+
+
 def check_ci(api, comment_id, request, pr):
     try:
         if request.get("run_id") and request.get("attempt"):
@@ -285,6 +305,10 @@ class GitHub:
         endpoint = f"repos/{self.repository}/actions/runs/{run_id}/attempts/{attempt}"
         return gh(endpoint)[0]
 
+    def issue_events(self, pr_number):
+        endpoint = f"repos/{self.repository}/issues/{pr_number}/events?per_page=100"
+        return [event for page in gh(endpoint) for event in page]
+
     def pulls_for_run(self, run):
         """Find candidate PRs by source branch, including forks GitHub omits from the run."""
         numbers = {item["number"] for item in run.get("pull_requests", [])}
@@ -340,16 +364,26 @@ class GitHub:
                 )
                 if could_have_triggered(candidate, run.get("created_at"))
             ]
+            histories = {}
+            if len(candidates) > 1 and run.get("created_at"):
+                for candidate in candidates:
+                    histories[candidate["number"]] = self.issue_events(
+                        candidate["number"]
+                    )
+                candidates = [
+                    candidate
+                    for candidate in candidates
+                    if was_open_at(histories[candidate["number"]], run["created_at"])
+                ]
             if len(candidates) != 1 or candidates[0]["number"] != pr["number"]:
                 raise AmbiguousCIError(
                     "CI run cannot be uniquely matched to multiple pull requests"
                 )
             # A run for the same head can predate a retarget and test the old
             # base. GitHub's current PR association does not establish its base.
-            endpoint = (
-                f"repos/{self.repository}/issues/{pr['number']}/events?per_page=100"
-            )
-            events = [event for page in gh(endpoint) for event in page]
+            events = histories.get(pr["number"])
+            if events is None:
+                events = self.issue_events(pr["number"])
             if any(
                 event.get("event")
                 in ("base_ref_changed", "automatic_base_change_succeeded")

@@ -280,3 +280,56 @@ def test_bounded_logs_mark_an_unavailable_job_without_exceeding_the_limit(runner
     assert "unavailable" in excerpt.lower()
     assert "failed" in excerpt
     assert len(excerpt.encode()) <= 80
+
+
+def test_unavailable_logs_remain_within_the_minimum_job_limit(runner):
+    directory, run = runner
+    result, _ = run(
+        "fetch_logs", API_RESPONSE="17", FAIL_LOG_JOB="17", MAX_LOG_BYTES="32"
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "unavailable" in excerpt.lower()
+    assert len(excerpt.encode()) <= 32
+
+
+def test_unavailable_job_list_respects_the_output_limit(runner):
+    directory, run = runner
+    result, _ = run("fetch_logs", API_FAIL="1", MAX_LOG_BYTES="32")
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "unavailable" in excerpt.lower()
+    assert len(excerpt.encode()) <= 32
+
+
+def test_bounded_logs_keep_earlier_errors_within_the_same_job(runner):
+    directory, run = runner
+    logs = (
+        "##[group]test\n"
+        + "x" * 300
+        + "\n##[error]original failure\n"
+        + "##[group]cleanup\n"
+        + "y" * 300
+        + "\n##[error]cleanup failure\n"
+    )
+    result, _ = run(
+        "fetch_logs", API_RESPONSE="17", LOG_RESPONSE=logs, MAX_LOG_BYTES="160"
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "original failure" in excerpt
+    assert "cleanup failure" in excerpt
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 160
+
+
+def test_many_errors_with_a_small_limit_still_mark_truncation(runner):
+    directory, run = runner
+    logs = "".join(f"##[group]test\n##[error]failure {index}\n" for index in range(10))
+    result, _ = run(
+        "fetch_logs", API_RESPONSE="17", LOG_RESPONSE=logs, MAX_LOG_BYTES="32"
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 32

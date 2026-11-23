@@ -21,6 +21,7 @@ from ci_requests import (  # noqa: E402
     resume,
     resume_record,
     wake,
+    was_open_at,
 )
 
 
@@ -330,8 +331,9 @@ class TestCIRequests(unittest.TestCase):
                 {"number": 18, "head": {"repo": {"full_name": "someone/other"}}},
             ]
         ]
-        with patch("ci_requests.gh", return_value=prs):
+        with patch("ci_requests.gh", return_value=prs) as api:
             assert GitHub("openwisp/repo").pulls_for_run(run) == [{"number": 17}]
+        self.assertIn("state=all", api.call_args.args[0])
 
     def test_ambiguous_fork_run_is_not_assigned_to_multiple_pull_requests(self):
         pr = {
@@ -770,6 +772,8 @@ class TestCIRequests(unittest.TestCase):
             api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
         ), patch.object(
             api, "pull", side_effect=[pr, old]
+        ), patch.object(
+            api, "issue_events", return_value=[]
         ):
             with self.assertRaisesRegex(AmbiguousCIError, "multiple pull requests"):
                 api.ci_run(pr)
@@ -855,3 +859,44 @@ class TestCIRequests(unittest.TestCase):
             ],
             5,
         )
+
+    def test_reopened_pr_is_excluded_when_it_was_closed_during_the_run(self):
+        events = [
+            {"event": "closed", "created_at": "2026-01-01T10:00:00Z"},
+            {"event": "reopened", "created_at": "2026-01-01T12:00:00Z"},
+        ]
+        self.assertFalse(was_open_at(events, "2026-01-01T11:00:00Z"))
+        self.assertTrue(was_open_at(events, "2026-01-01T13:00:00Z"))
+        self.assertTrue(was_open_at(events, "2026-01-01T10:00:00Z"))
+
+    def test_ci_lookup_uses_open_close_history_for_overlapping_candidates(self):
+        pr = {
+            "number": 17,
+            "created_at": "2026-01-01T08:00:00Z",
+            "closed_at": None,
+            "head": {"sha": "a" * 40, "ref": "fix", "repo": {"id": 2}},
+        }
+        other = {"number": 18, "created_at": "2026-01-01T08:00:00Z", "closed_at": None}
+        run = {
+            "id": 1,
+            "event": "pull_request",
+            "head_sha": "a" * 40,
+            "head_branch": "fix",
+            "head_repository": {"id": 2},
+            "pull_requests": [],
+            "created_at": "2026-01-01T11:00:00Z",
+        }
+        events = [
+            {"event": "closed", "created_at": "2026-01-01T10:00:00Z"},
+            {"event": "reopened", "created_at": "2026-01-01T12:00:00Z"},
+        ]
+        api = GitHub("openwisp/repo")
+        with patch(
+            "ci_requests.gh",
+            side_effect=[[{"workflow_runs": [run]}], [[]], [events], [[]]],
+        ), patch.object(
+            api, "pulls_for_run", return_value=[{"number": 17}, {"number": 18}]
+        ), patch.object(
+            api, "pull", side_effect=[pr, other]
+        ):
+            self.assertEqual(api.ci_run(pr), run)

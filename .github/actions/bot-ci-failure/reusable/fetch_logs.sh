@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Collect failed job log sections between GitHub group and error markers.
 set -eo pipefail
+if [ -n "${MAX_LOG_BYTES:-}" ] && \
+  { ! [[ "$MAX_LOG_BYTES" =~ ^[0-9]+$ ]] || [ "$MAX_LOG_BYTES" -lt 32 ]; }; then
+  echo "MAX_LOG_BYTES must be an integer of at least 32." >&2
+  exit 1
+fi
 echo "Getting failed jobs for run $RUN_ID..."
 JOBS_ENDPOINT="repos/$REPO/actions/runs/$RUN_ID"
 # The reviewer needs logs from the attempt it selected, even if CI is retried.
@@ -9,7 +14,11 @@ if [ -n "${ATTEMPT:-}" ]; then
 fi
 if ! JOB_IDS=$(gh api --paginate "$JOBS_ENDPOINT/jobs" \
   -q '.jobs[] | select(.conclusion=="failure") | .id'); then
-  echo "Could not fetch failed jobs for run $RUN_ID." > failed_logs.txt
+  if [ -n "${MAX_LOG_BYTES:-}" ]; then
+    echo "Failed jobs unavailable." > failed_logs.txt
+  else
+    echo "Could not fetch failed jobs for run $RUN_ID." > failed_logs.txt
+  fi
   exit 0
 fi
 if [ -z "$JOB_IDS" ]; then
@@ -17,10 +26,6 @@ if [ -z "$JOB_IDS" ]; then
   exit 0
 fi
 if [ -n "${MAX_LOG_BYTES:-}" ]; then
-  if ! [[ "$MAX_LOG_BYTES" =~ ^[0-9]+$ ]] || [ "$MAX_LOG_BYTES" -eq 0 ]; then
-    echo "MAX_LOG_BYTES must be a positive integer." >&2
-    exit 1
-  fi
   JOB_COUNT=$(wc -w <<<"$JOB_IDS")
   JOB_LIMIT=$((MAX_LOG_BYTES / JOB_COUNT))
   if [ "$JOB_LIMIT" -lt 32 ]; then
@@ -62,20 +67,43 @@ for JOB_ID in $JOB_IDS; do
     FOUND_ERROR=true
   fi
   if [ -n "${MAX_LOG_BYTES:-}" ] && [ "$(wc -c < job_excerpt.txt)" -gt "$JOB_LIMIT" ]; then
-    # Give each failed job a share of the limit so a long job cannot hide another job's error.
-    MARKER=$'\n[truncated]\n'
-    KEEP_BYTES=$((JOB_LIMIT - ${#MARKER}))
-    START_BYTES=$((KEEP_BYTES / 3))
-    END_BYTES=$((KEEP_BYTES - START_BYTES))
-    {
-      head -c "$START_BYTES" job_excerpt.txt
-      printf '%s' "$MARKER"
-      tail -c "$END_BYTES" job_excerpt.txt
-    } >> failed_logs.txt
+    # Divide each job's budget among its errors so a later cleanup failure
+    # cannot hide the original test failure.
+    ERROR_COUNT=$(grep -c "##\[error\]" job_excerpt.txt || true)
+    HEADER="JOB $JOB_ID"$'\n'
+    printf '%s' "$HEADER" > job_limited.txt
+    if [ "$ERROR_COUNT" -eq 0 ]; then
+      printf '[truncated]\n' >> job_limited.txt
+    else
+      SECTION_LIMIT=$(((JOB_LIMIT - ${#HEADER}) / ERROR_COUNT))
+      MARKER=$'[truncated]\n'
+      if [ "$SECTION_LIMIT" -le "${#MARKER}" ]; then
+        printf '%s' "$MARKER" >> job_limited.txt
+      else
+        LC_ALL=C awk -v limit="$SECTION_LIMIT" -v marker="$MARKER" '
+        { buffer = buffer $0 "\n" }
+        /##\[error\]/ {
+          if (length(buffer) > limit && limit > length(marker)) {
+            printf "%s%s", marker, substr(buffer, length(buffer) - (limit - length(marker)) + 1)
+          } else if (length(buffer) > limit) {
+            printf "%s", substr(marker, 1, limit)
+          } else {
+            printf "%s", buffer
+          }
+          buffer = ""
+        }
+        ' job_excerpt.txt >> job_limited.txt
+      fi
+    fi
+    head -c "$JOB_LIMIT" job_limited.txt >> failed_logs.txt
   else
     cat job_excerpt.txt >> failed_logs.txt
   fi
 done
 if [ ! -s failed_logs.txt ] || [ "$FOUND_ERROR" != true ]; then
-  echo "Failed jobs found but logs unavailable." > failed_logs.txt
+  if [ -n "${MAX_LOG_BYTES:-}" ]; then
+    echo "Failed logs unavailable." > failed_logs.txt
+  else
+    echo "Failed jobs found but logs unavailable." > failed_logs.txt
+  fi
 fi

@@ -157,7 +157,7 @@ jobs:
       - name: Checkout trusted revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.gate.outputs.base_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -183,6 +183,106 @@ jobs:
       - name: Prepare sandbox user
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/prepare_sandbox.sh
 
+      - name: Select CI environment
+        if: ${{ hashFiles('install-ci-deps.sh') != '' }}
+        id: ci
+        env:
+          CI_ROOT: ${{ github.workspace }}
+          REVIEW_MATRIX_OVERRIDE: ${{ vars.AI_REVIEW_MATRIX_OVERRIDE }}
+        run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/select_environment.sh
+
+      - name: Set up CI Python
+        if: steps.ci.outputs.python_version != ''
+        id: python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ steps.ci.outputs.python_version }}
+
+      - name: Set up CI Node.js
+        if: steps.ci.outputs.node_version_file != ''
+        id: node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ${{ steps.ci.outputs.node_version_file }}
+
+      - name: Set up QA Python
+        if: steps.ci.outputs.node_version_file != ''
+        id: qa-python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Set up Chrome and ChromeDriver
+        if: steps.ci.outputs.node_version_file != ''
+        id: chrome
+        uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2.2.0
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+
+      - name: Identify runner image
+        if: steps.ci.outcome == 'success'
+        id: platform
+        run: echo "image_os=$ImageOS" >> "$GITHUB_OUTPUT"
+
+      - name: Locate Yarn cache
+        if: steps.ci.outputs.node_version_file != ''
+        id: yarn-cache-dir-path
+        run: echo "dir=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Python cache
+        if: steps.ci.outputs.python_version != '' && steps.ci.outputs.django_version == ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: >-
+            ${{ format('{0}-{1}-{2}-pip-{3}-{4}', runner.os, runner.arch,
+                steps.platform.outputs.image_os, steps.python.outputs.python-version,
+                hashFiles('requirements-test.txt', 'setup.py', 'install-ci-deps.sh')) }}
+
+      - name: Restore Django cache
+        if: steps.ci.outputs.django_version != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: >-
+            ${{ format('{0}-{1}-{2}-pip-{3}-{4}-{5}', runner.os, runner.arch,
+                steps.platform.outputs.image_os, steps.python.outputs.python-version,
+                steps.ci.outputs.django_version, hashFiles('setup.py', 'install-ci-deps.sh')) }}
+
+      - name: Restore Yarn cache
+        if: steps.ci.outputs.node_version_file != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Matching children keeps tar from including excluded build files.
+          path: |
+            ${{ steps.yarn-cache-dir-path.outputs.dir }}
+            node_modules/*
+            !node_modules/.cache
+            !node_modules/.cache/**
+          key: >-
+            ${{ format('{0}-{1}-{2}-yarn-{3}-{4}', runner.os, runner.arch,
+                steps.platform.outputs.image_os, steps.node.outputs.node-version,
+                hashFiles('yarn.lock', 'package.json', '.nvmrc', 'install-ci-deps.sh')) }}
+
+      - name: Restore QA Python cache
+        if: steps.ci.outputs.node_version_file != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: >-
+            ${{ format('{0}-{1}-{2}-pip-qa-{3}-{4}', runner.os, runner.arch,
+                steps.platform.outputs.image_os, steps.qa-python.outputs.python-version,
+                hashFiles('install-ci-deps.sh')) }}
+
+      - name: Install trusted CI dependencies
+        if: steps.ci.outcome == 'success'
+        env:
+          DJANGO_VERSION: ${{ steps.ci.outputs.django_version }}
+          YARN_CACHE_DIR: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          CI_QA: ${{ steps.ci.outputs.node_version_file != '' && '1' || '0' }}
+        run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/prepare_review.sh
+
       - name: Install OpenCode
         # The exact OpenCode release is pinned.
         run: npm install -g opencode-ai@1.18.35 # zizmor: ignore[adhoc-packages]
@@ -206,6 +306,8 @@ jobs:
           MODEL: ${{ needs.gate.outputs.model }}
           STAGE: ${{ needs.gate.outputs.stage }}
           EFFORT: ${{ needs.gate.outputs.effort }}
+          SE_CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          SE_CHROMEDRIVER: ${{ steps.chrome.outputs.chromedriver-path }}
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/run_review.sh
 
       - name: Upload findings

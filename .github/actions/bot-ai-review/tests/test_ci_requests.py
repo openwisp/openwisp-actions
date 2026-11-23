@@ -615,6 +615,9 @@ class TestCIRequests(unittest.TestCase):
             def update(self, comment_id, body):
                 self.body = body
 
+            def ci_run(self, pr):
+                raise AssertionError("A retargeted request must not check CI")
+
         api = API()
         pr = {"state": "open", "head": {"sha": "a" * 40}, "base": {"ref": "master"}}
         self.assertEqual(resume(api, comment, 42, pr)[0], "stopped")

@@ -96,3 +96,28 @@ def test_request_state_key_is_only_passed_to_trusted_coordinator_steps():
         ("finish-ci-request", "Finish request"),
         ("ci-completion", "Wake pending requests"),
     ]
+
+
+def test_resume_dispatch_requires_bot_author_before_entering_the_gate():
+    root = os.path.join(os.path.dirname(__file__), "../../../workflows")
+    for name, job in (
+        ("bot-ai-review.yml", "ai-review"),
+        ("reusable-bot-ai-review.yml", "gate"),
+    ):
+        with open(os.path.join(root, name)) as workflow:
+            condition = yaml.safe_load(workflow)["jobs"][job]["if"]
+        assert "github.event.comment.user.type == 'Bot'" in condition
+        assert (
+            "startsWith(github.event.comment.body, '/ai-review-resume ')" in condition
+        )
+    with open(os.path.join(root, "reusable-bot-ai-review.yml")) as workflow:
+        gate = yaml.safe_load(workflow)["jobs"]["gate"]
+    for name in (
+        "Generate read-only app token",
+        "Generate CI coordinator token",
+        "Coordinate review request",
+    ):
+        condition = next(
+            step["if"] for step in gate["steps"] if step.get("name") == name
+        )
+        assert "github.event.comment.user.type == 'Bot'" in condition

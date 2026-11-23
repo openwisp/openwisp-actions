@@ -27,7 +27,8 @@ jobs:
       github.event.issue.pull_request &&
       (github.event.comment.author_association == 'OWNER' ||
        github.event.comment.author_association == 'MEMBER' ||
-       (inputs.wait_for_ci && startsWith(github.event.comment.body, '/ai-review-resume ')))
+       (inputs.wait_for_ci && github.event.comment.user.type == 'Bot' &&
+        startsWith(github.event.comment.body, '/ai-review-resume ')))
     # Registration and resumption must not claim the same stored request.
     concurrency:
       group: ai-review-coordinator-${{ github.repository }}
@@ -73,7 +74,8 @@ jobs:
       - name: Generate read-only app token
         if: >
           steps.command.outputs.stage != '' ||
-          (inputs.wait_for_ci && startsWith(github.event.comment.body, '/ai-review-resume '))
+          (inputs.wait_for_ci && github.event.comment.user.type == 'Bot' &&
+          startsWith(github.event.comment.body, '/ai-review-resume '))
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -102,7 +104,8 @@ jobs:
       - name: Generate CI coordinator token
         if: >
           inputs.wait_for_ci && (steps.command.outputs.stage != '' ||
-          startsWith(github.event.comment.body, '/ai-review-resume '))
+          (github.event.comment.user.type == 'Bot' &&
+          startsWith(github.event.comment.body, '/ai-review-resume ')))
         id: ci-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -114,7 +117,8 @@ jobs:
       - name: Coordinate review request
         if: >
           steps.command.outputs.stage != '' ||
-          (inputs.wait_for_ci && startsWith(github.event.comment.body, '/ai-review-resume '))
+          (inputs.wait_for_ci && github.event.comment.user.type == 'Bot' &&
+          startsWith(github.event.comment.body, '/ai-review-resume '))
         id: coordinate
         env:
           GH_TOKEN: ${{ steps.ci-token.outputs.token || steps.app-token.outputs.token }}

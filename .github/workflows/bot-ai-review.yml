@@ -22,7 +22,8 @@ jobs:
           (startsWith(github.event.comment.body, '/review') ||
            startsWith(github.event.comment.body, '/security-review') ||
            startsWith(github.event.comment.body, '/final-review'))) ||
-         startsWith(github.event.comment.body, '/ai-review-resume '))))
+         (github.event.comment.user.type == 'Bot' &&
+          startsWith(github.event.comment.body, '/ai-review-resume ')))))
     permissions:
       contents: read
       issues: read # Reads the issues linked in the pull request description.

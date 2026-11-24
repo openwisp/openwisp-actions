@@ -47,6 +47,18 @@ class TestBuildPrompt(unittest.TestCase):
     def test_uses_the_given_limit(self):
         self.assertIn("stopped after 25 minutes", self.build("review", "25"))
 
+    def test_all_stages_request_actionable_experiment_evidence(self):
+        for stage in ("review", "security-review", "final-review"):
+            with self.subTest(stage=stage):
+                output = self.build(stage)
+                self.assertIn("failing regression test", output)
+                self.assertIn("inline comment", output)
+                self.assertIn("test still passes", output)
+
+    def test_security_review_limits_experiments_to_security_findings(self):
+        output = self.build("security-review")
+        self.assertIn("Only run experiments relevant to security", output)
+
 
 if __name__ == "__main__":
     unittest.main()

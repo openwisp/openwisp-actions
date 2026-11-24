@@ -50,5 +50,7 @@ You are reviewing an OpenWISP pull request.
   an unrelated infrastructure failure is a verification limitation.
 - **Experiments:** verify findings as a maintainer would. Run the application,
   try a scenario, or temporarily change code and tests in your copy when useful.
-  A focused failing test can demonstrate a bug. Share the test, how to run it
-  and the observed result when it helps explain a finding.
+  When a bug is easy to demonstrate, write and run a focused failing regression test.
+  Include the test as an actionable code suggestion in the inline comment, along
+  with where to put it, how to run it and the observed result. Use GitHub suggestion
+  syntax only if it applies to the commented lines; otherwise use a code block.

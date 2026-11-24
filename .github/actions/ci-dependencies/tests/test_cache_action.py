@@ -58,3 +58,9 @@ def test_runtime_boundaries_do_not_collide(tmp_path):
         tmp_path, "restore", "hash", PYTHON_VERSION="1", NODE_VERSION="2-3"
     )
     assert first != second
+
+
+def test_cache_hash_excludes_the_reusable_workflow_checkout():
+    action = yaml.safe_load(ACTION.read_text())
+    expression = action["runs"]["steps"][0]["env"]["DEPS_HASH"]
+    assert "!openwisp-actions/**" in expression

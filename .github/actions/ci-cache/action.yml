@@ -35,7 +35,7 @@ runs:
         NODE_VERSION: ${{ inputs.node-version }}
         DJANGO_VERSION: ${{ inputs.django-version }}
         VARIANT: ${{ inputs.variant }}
-        DEPS_HASH: ${{ hashFiles(inputs.dependency-glob, 'install-ci-deps.sh') }}
+        DEPS_HASH: ${{ hashFiles(inputs.dependency-glob, 'install-ci-deps.sh', '!openwisp-actions/**') }}
       run: |
         case "$MODE" in write|restore) ;; *) echo "Invalid cache mode" >&2; exit 1 ;; esac
         key=$(printf '%s\0' "$RUNNER_OS" "$RUNNER_ARCH" "$IMAGE_OS" "$PYTHON_VERSION" \

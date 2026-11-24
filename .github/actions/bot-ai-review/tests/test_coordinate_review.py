@@ -128,3 +128,23 @@ def test_completion_trigger_matches_names_with_slashes():
     with open(os.path.join(root, "bot-ai-review.yml")) as workflow:
         config = yaml.load(workflow, Loader=yaml.BaseLoader)
     assert config["on"]["workflow_run"]["workflows"] == ["**"]
+
+
+def test_published_review_link_reaches_request_cleanup():
+    root = os.path.join(os.path.dirname(__file__), "../../../workflows")
+    with open(os.path.join(root, "reusable-bot-ai-review.yml")) as workflow:
+        jobs = yaml.safe_load(workflow)["jobs"]
+    assert (
+        jobs["publish"]["outputs"]["review_url"]
+        == "${{ steps.publish.outputs.review_url }}"
+    )
+    publish = next(
+        step for step in jobs["publish"]["steps"] if step.get("id") == "publish"
+    )
+    assert publish["env"]["RECORD_ID"] == "${{ needs.gate.outputs.record_id }}"
+    finish = next(
+        step
+        for step in jobs["finish-ci-request"]["steps"]
+        if step.get("name") == "Finish request"
+    )
+    assert finish["env"]["REVIEW_URL"] == "${{ needs.publish.outputs.review_url }}"

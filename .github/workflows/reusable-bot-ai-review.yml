@@ -319,6 +319,8 @@ jobs:
       cancel-in-progress: true
     permissions:
       contents: read
+    outputs:
+      review_url: ${{ steps.publish.outputs.review_url }}
     steps:
       - name: Checkout trusted revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -352,6 +354,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Publish review
+        id: publish
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
@@ -364,6 +367,7 @@ jobs:
           CI_STANDARD_STATUS: ${{ needs.gate.outputs.ci_standard_status }}
           CI_STANDARD_MISSING: ${{ needs.gate.outputs.ci_standard_missing }}
           CI_AWARE: ${{ inputs.wait_for_ci }}
+          RECORD_ID: ${{ needs.gate.outputs.record_id }}
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/publish.sh
 
   react:
@@ -425,6 +429,7 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
           RECORD_ID: ${{ needs.gate.outputs.record_id }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
+          REVIEW_URL: ${{ needs.publish.outputs.review_url }}
         run: python3 openwisp-actions/.github/actions/bot-ai-review/reusable/finish_ci_request.py
 
   ci-completion:

@@ -13,6 +13,7 @@ from ci_requests import (  # noqa: E402
     GitHub,
     active_request,
     bounded_pages,
+    check_ci,
     coordinate,
     could_have_triggered,
     finish,
@@ -1052,3 +1053,113 @@ class TestCIRequests(unittest.TestCase):
         self.assertIn("could not check", api.messages[0][1].lower())
         self.assertEqual(api.messages[0][0], 16)
         self.assertEqual(api.messages[1], (17, "/ai-review-resume 9"))
+
+    def test_waiting_message_links_ci_and_names_the_commit(self):
+        class API:
+            def ci_run(self, pr):
+                return {
+                    "id": 5,
+                    "run_attempt": 1,
+                    "status": "in_progress",
+                    "html_url": "https://example.test/ci",
+                }
+
+            def update(self, comment_id, body):
+                self.body = body
+
+        api = API()
+        check_ci(api, 9, self.request.copy(), {})
+        self.assertIn("Waiting for [CI to complete](https://example.test/ci)", api.body)
+        self.assertIn("a" * 40, api.body)
+
+    def test_waiting_message_is_preserved_through_review_completion(self):
+        run = {
+            "id": 5,
+            "run_attempt": 1,
+            "status": "in_progress",
+            "html_url": "https://example.test/ci",
+        }
+        request = self.request.copy()
+
+        class API:
+            def ci_run(self, pr):
+                return run
+
+            def run_attempt(self, run_id, attempt):
+                return run
+
+            def update(self, comment_id, body):
+                self.body = body
+
+            def comment(self, comment_id):
+                return {**self_comment, "body": self.body}
+
+            def pull(self, number):
+                return {"state": "open", "head": {"sha": "a" * 40}}
+
+        self_comment = self.comment
+        api = API()
+        check_ci(api, 9, request, {})
+        waiting = api.body.split("\n\n<!--", 1)[0]
+        run.update(status="completed", conclusion="success")
+        check_ci(api, 9, request, {})
+        self.assertTrue(api.body.startswith(waiting + "\n\nUpdate: review is running."))
+        finish(api, 42, 17, 9, "success", "https://example.test/review")
+        self.assertTrue(
+            api.body.startswith(
+                waiting + "\n\nUpdate: [review completed](https://example.test/review)."
+            )
+        )
+
+    def test_missing_ci_explains_possible_causes(self):
+        class API:
+            def ci_run(self, pr):
+                return None
+
+            def update(self, comment_id, body):
+                self.body = body
+
+        api = API()
+        self.assertEqual(check_ci(api, 9, self.request.copy(), {})[0], "stopped")
+        self.assertIn("may not be visible yet", api.body)
+        self.assertIn("branch or path filter", api.body)
+
+    def test_published_review_link_is_kept_if_later_cleanup_fails(self):
+        record = {
+            **self.comment,
+            "body": record_body({**self.request, "state": "reviewing"}, "Reviewing."),
+        }
+
+        class API:
+            def comment(self, comment_id):
+                return record
+
+            def pull(self, pr_number):
+                return {"state": "open", "head": {"sha": "a" * 40}}
+
+            def update(self, comment_id, body):
+                self.body = body
+
+        api = API()
+        finish(api, 42, 17, 9, "failure", "https://example.test/review")
+        self.assertIn("[review completed](https://example.test/review)", api.body)
+
+    def test_finished_review_reports_when_link_is_unavailable(self):
+        record = {
+            **self.comment,
+            "body": record_body({**self.request, "state": "reviewing"}, "Reviewing."),
+        }
+
+        class API:
+            def comment(self, comment_id):
+                return record
+
+            def pull(self, pr_number):
+                return {"state": "open", "head": {"sha": "a" * 40}}
+
+            def update(self, comment_id, body):
+                self.body = body
+
+        api = API()
+        finish(api, 42, 17, 9, "success")
+        self.assertIn("review completed, but the link is unavailable", api.body)

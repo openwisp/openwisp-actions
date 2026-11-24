@@ -32,6 +32,7 @@ case "$*" in
   *"--jq .head.sha"*) echo "$REMOTE_HEAD" ;;
   *"--jq .state"*) echo "${REMOTE_STATE:-open}" ;;
   *"--jq .base.ref"*) echo "${REMOTE_BASE:-master}" ;;
+  *"issues/comments/9 --jq .user.id"*) echo 42 ;;
   "api --paginate "*) cat "$STATE/reviews.json" ;;
   "api -X POST "*) cat >"$STATE/review.json" ;;
 esac
@@ -70,6 +71,8 @@ def publish(
     ci_standard_status="unknown",
     ci_standard_missing="",
     remote_base="master",
+    capture_output=False,
+    lookup_user_id=42,
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
@@ -85,6 +88,16 @@ def publish(
                 }
                 for review in REVIEWS
             ]
+            if ci_aware:
+                reviews.append(
+                    {
+                        "id": 3,
+                        "user": {"type": "Bot", "id": lookup_user_id},
+                        "body": "AI review <!-- ai-review-run 123-1 -->",
+                        "html_url": "https://example.test/review/3",
+                        "state": "COMMENTED",
+                    }
+                )
             json.dump(reviews, f)
         path = os.path.join(state, "findings.json")
         with open(path, "w") as f:
@@ -107,6 +120,10 @@ def publish(
             "FAIL_PUSH": str(int(fail_push)),
             "STAGE": stage,
             "MODEL": "provider/model",
+            "GITHUB_RUN_ID": "123",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_OUTPUT": os.path.join(state, "github_output"),
+            "RECORD_ID": "9",
         }
         result = subprocess.run(["bash", SCRIPT], env=env, capture_output=True)
         with open(os.path.join(state, "log")) as f:
@@ -125,6 +142,12 @@ def publish(
         ):
             return result.returncode, log
         assert result.returncode == 0, result.stderr
+        if capture_output:
+            output = os.path.join(state, "github_output")
+            if os.path.exists(output):
+                with open(output) as output_file:
+                    return log, review, output_file.read()
+            return log, review, ""
         return log, review
 
 
@@ -293,6 +316,20 @@ class TestPublish(unittest.TestCase):
         status, log = publish(APPROVED, comments=(), remote_base="release")
         self.assertNotEqual(status, 0)
         self.assertFalse(any("api -X POST" in line for line in log))
+
+    def test_ci_aware_publication_returns_exact_review_link(self):
+        for comments in ((), (COMMENT,)):
+            with self.subTest(comments=comments):
+                _, _, output = publish(
+                    APPROVED, comments=comments, ci_aware=True, capture_output=True
+                )
+                self.assertEqual(output, "review_url=https://example.test/review/3\n")
+
+    def test_review_link_does_not_match_another_bot(self):
+        _, _, output = publish(
+            APPROVED, comments=(), ci_aware=True, capture_output=True, lookup_user_id=43
+        )
+        self.assertEqual(output, "")
 
 
 if __name__ == "__main__":

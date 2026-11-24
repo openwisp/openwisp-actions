@@ -190,10 +190,13 @@ def wake(api, app_id, run):
                 and request.get("head_sha") == run["head_sha"]
                 and request.get("pr_number") == pr_number
             ):
+                # A new app comment starts the existing serialized review workflow
+                # without holding a runner. Dispatching the workflow through the
+                # Actions API would require Actions write permission on the app.
                 api.create(pr_number, f"/ai-review-resume {comment['id']}")
 
 
-def finish(api, app_id, pr_number, comment_id, publication_result):
+def finish(api, app_id, pr_number, comment_id, publication_result, review_url=""):
     comment = api.comment(comment_id)
     request = parse_record(comment, app_id)
     if not request or request.get("state") != "reviewing":
@@ -201,11 +204,15 @@ def finish(api, app_id, pr_number, comment_id, publication_result):
     pr = api.pull(pr_number)
     request["state"] = "done"
     if not is_current(pr, request):
-        message = "The pull request changed or closed; review skipped."
+        update = "Review skipped: the pull request changed or closed."
+    elif review_url:
+        update = f"[review completed]({review_url})."
     elif publication_result == "success":
-        message = "CI-aware review completed."
+        update = "review completed, but the link is unavailable."
     else:
-        message = "CI-aware review did not complete. Request another review."
+        update = "review did not complete. Request another review."
+    waiting = request.get("waiting_message")
+    message = f"{waiting}\n\nUpdate: {update}" if waiting else f"Update: {update}"
     api.update(comment_id, record_body(request, message))
 
 
@@ -276,7 +283,12 @@ def check_ci(api, comment_id, request, pr):
         request["state"] = "done"
         api.update(
             comment_id,
-            record_body(request, "No matching CI run. Request a new review."),
+            record_body(
+                request,
+                "No CI run found for this commit. The run may not be visible yet, or the "
+                "workflow may have skipped this PR because of a branch or path filter. "
+                "Request the review again once CI starts.",
+            ),
         )
         return "stopped", comment_id, None
     state = classify(run)
@@ -286,9 +298,15 @@ def check_ci(api, comment_id, request, pr):
     request["run_id"] = run["id"]
     request["attempt"] = run["run_attempt"]
     if state == "waiting":
-        message = f"Waiting for CI for {request['head_sha']}: {run['html_url']}"
+        message = (
+            f"Waiting for [CI to complete]({run['html_url']}) "
+            f"before reviewing `{request['head_sha']}`."
+        )
+        request["waiting_message"] = message
     elif state == "ready":
-        message = f"Reviewing {request['head_sha']} with CI results: {run['html_url']}"
+        waiting = request.get("waiting_message")
+        update = "Update: review is running."
+        message = f"{waiting}\n\n{update}" if waiting else update
     else:
         message = f"CI did not finish successfully or fail: {run['html_url']}. Request a new review."
     api.update(comment_id, record_body(request, message))

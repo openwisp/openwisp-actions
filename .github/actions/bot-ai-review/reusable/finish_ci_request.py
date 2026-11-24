@@ -12,6 +12,7 @@ def main():
         int(os.environ["PR_NUMBER"]),
         int(os.environ["RECORD_ID"]),
         os.environ["PUBLISH_RESULT"],
+        os.environ.get("REVIEW_URL", ""),
     )
 
 

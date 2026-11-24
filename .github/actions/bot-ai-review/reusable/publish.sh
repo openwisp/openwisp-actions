@@ -38,6 +38,11 @@ if [ -n "$TITLE" ]; then
 "
 fi
 BODY+=$SUMMARY
+if [ "${CI_AWARE:-false}" = true ]; then
+  # Identify this exact publication even when Crit posts the review with inline comments.
+  REVIEW_MARKER="<!-- ai-review-run ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1} -->"
+  BODY+=$'\n\n'"$REVIEW_MARKER"
+fi
 COMMENTS="$RUNNER_TEMP/comments.json"
 jq '.comments' "$FINDINGS" >"$COMMENTS"
 CURRENT_SHA=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
@@ -57,6 +62,19 @@ if [ "$(jq 'length' "$COMMENTS")" -eq 0 ]; then
 else
   crit comment --json --file "$COMMENTS"
   crit push "$PR_NUMBER" --event "$EVENT" --message "$BODY"
+fi
+if [ "${CI_AWARE:-false}" = true ] && [ -n "${RECORD_ID:-}" ]; then
+  # Match the marker and the app's bot account, not an unrelated review of the same commit.
+  if BOT_ID=$(gh api "repos/$REPOSITORY/issues/comments/$RECORD_ID" --jq '.user.id') && \
+    REVIEW_URL=$(gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" | \
+      jq -rs --arg marker "$REVIEW_MARKER" --arg bot "$BOT_ID" '
+        [.[][] | select((.user.id | tostring) == $bot and ((.body // "") | contains($marker)))]
+        | if length == 1 then .[0].html_url else empty end') && \
+    [[ "$REVIEW_URL" == https://* && "$REVIEW_URL" != *$'\n'* ]]; then
+    printf 'review_url=%s\n' "$REVIEW_URL" >> "$GITHUB_OUTPUT"
+  else
+    echo '::warning::Published review link is unavailable.'
+  fi
 fi
 case "$VERDICT" in
   "Review not completed" | Inconclusive | "Maintainer decision needed") exit 0 ;;

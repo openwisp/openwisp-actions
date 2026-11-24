@@ -14,13 +14,13 @@ Verify your findings before reporting them, as a maintainer would:
   update them only when needed, for example if they are missing or the
   dependency requirements changed.
 - Do not report problems already reported by CI or another workflow.
-- For new or changed tests relevant to this review stage, temporarily revert
-  the behavior they cover and run them. If a test still passes or fails with
-  an unclear message, explain the experiment and suggest an effective assertion.
+- For new or changed tests intended to cover changed behavior relevant to this
+  review stage, temporarily revert that behavior and run the tests. If a test
+  still passes or fails with an unclear message, explain the experiment and
+  suggest an effective assertion. Do not reject tests that cover other behavior.
 - Do not report temporary edits, reversions or restoration unless needed to
-  explain a finding. Do not report
-  successful test runs unless the result is needed to explain a finding or
-  an unresolved verification limitation.
+  explain a finding. Do not report successful test runs unless the result is
+  needed to explain a finding or an unresolved verification limitation.
 - Your copy of the pull request is temporary and your edits are never
   published.
 - Commands run in the same temporary copy of your working directory. It

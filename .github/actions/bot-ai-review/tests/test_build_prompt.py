@@ -50,10 +50,11 @@ class TestBuildPrompt(unittest.TestCase):
     def test_all_stages_request_actionable_experiment_evidence(self):
         for stage in ("review", "security-review", "final-review"):
             with self.subTest(stage=stage):
-                output = self.build(stage)
+                output = " ".join(self.build(stage).split())
                 self.assertIn("failing regression test", output)
                 self.assertIn("inline comment", output)
                 self.assertIn("test still passes", output)
+                self.assertIn("Do not reject tests that cover other behavior", output)
 
     def test_security_review_limits_experiments_to_security_findings(self):
         output = self.build("security-review")

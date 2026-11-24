@@ -48,9 +48,16 @@ jq '.comments' "$FINDINGS" >"$COMMENTS"
 CURRENT_SHA=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
 CURRENT_STATE=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.state')
 CURRENT_BASE=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.base.ref')
-if [ "$CURRENT_SHA" != "$HEAD_SHA" ] || [ "$CURRENT_STATE" != open ] || \
-  [ "$CURRENT_BASE" != "$BASE_REF" ]; then
-  echo "::error::The pull request changed or closed during the review, request it again"
+if [ "$CURRENT_SHA" != "$HEAD_SHA" ]; then
+  echo "::error::The pull request head changed during the review; request another review"
+  exit 1
+fi
+if [ "$CURRENT_STATE" != open ]; then
+  echo "::error::The pull request closed during the review"
+  exit 1
+fi
+if [ "$CURRENT_BASE" != "$BASE_REF" ]; then
+  echo "::error::The pull request base changed during the review; request another review"
   exit 1
 fi
 if [ "$(jq 'length' "$COMMENTS")" -eq 0 ]; then
@@ -80,13 +87,17 @@ case "$VERDICT" in
   "Review not completed" | Inconclusive | "Maintainer decision needed") exit 0 ;;
 esac
 
-# Keep the newest review for this stage. Dismiss only the earlier bot change requests.
-gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |
+# Do not use the app's dismissal permission on another reviewer's change requests.
+if ! gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |
   jq -rs --arg prefix "AI $STAGE of " '
-    [.[][] | select(.user.type == "Bot" and (.body | startswith($prefix)))]
+    [.[][] | select(.user.login == "openwisp-companion[bot]" and (.body | startswith($prefix)))]
     | sort_by(.id) | .[:-1][]
     | select(.state == "CHANGES_REQUESTED") | .id' |
   while read -r REVIEW_ID; do
-    gh api -X PUT "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID/dismissals" \
-      -f message="Superseded by a newer AI $STAGE." -f event=DISMISS --silent
-  done
+    if ! gh api -X PUT "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID/dismissals" \
+      -f message="Superseded by a newer AI $STAGE." -f event=DISMISS --silent; then
+      echo "::warning::Published the review, but could not dismiss earlier review $REVIEW_ID"
+    fi
+  done; then
+  echo "::warning::Published the review, but could not list earlier reviews for dismissal"
+fi

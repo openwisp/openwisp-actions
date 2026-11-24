@@ -92,12 +92,18 @@ class TestRunReview(unittest.TestCase):
         effort="",
         metadata=None,
         ci_results=False,
+        auth=None,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = directory.name
         for name in ("bin", "pr", "data", "shared-guidance"):
             os.mkdir(os.path.join(root, name))
+        if auth:
+            auth_dir = os.path.join(root, "opencode-data", "opencode")
+            os.makedirs(auth_dir)
+            with open(os.path.join(auth_dir, "auth.json"), "w") as f:
+                json.dump({"provider": auth}, f)
         files = ["pr.diff", "context.json", "history.json"]
         if guidance:
             files.append("guidance.md")
@@ -143,3 +149,23 @@ class TestRunReview(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         with open(os.path.join(root, "args")) as f:
             self.assertIn(f"{root}/data/ci-results.json", f.read().splitlines())
+
+    def test_failed_model_run_logs_error_event(self):
+        event = {
+            "type": "error",
+            "error": {"data": {"message": "Provider unavailable"}},
+        }
+        root, result = self.run_review(event, status=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"Error: Provider unavailable", result.stdout)
+        self.assertFalse(os.path.exists(os.path.join(root, "findings.json")))
+
+    def test_failed_model_run_does_not_log_access_token(self):
+        event = {"type": "error", "error": {"data": {"message": "access-secret"}}}
+        _, result = self.run_review(
+            event,
+            status=1,
+            auth={"refresh": "refresh-secret", "access": "access-secret"},
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(b"access-secret", result.stdout)

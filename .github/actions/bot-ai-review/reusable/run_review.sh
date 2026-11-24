@@ -52,17 +52,14 @@ fi
 
 AUTH="$XDG_DATA_HOME/opencode/auth.json"
 if [ -f "$AUTH" ]; then
-  TOKEN=$(jq -r '.[].refresh' "$AUTH")
+  mapfile -t TOKENS < <(jq -r '.[] | .refresh, .access | select(type == "string" and length > 0)' "$AUTH")
   rm -f "$AUTH"
-  if grep -qF -- "$TOKEN" "$EVENTS"; then
-    echo "::error::The model output contains a credential"
-    exit 1
-  fi
-fi
-
-if [ "$STATUS" -ne 0 ]; then
-  echo "::error::The model run did not complete (exit status: $STATUS)"
-  exit 1
+  for TOKEN in "${TOKENS[@]}"; do
+    if grep -qF -- "$TOKEN" "$EVENTS"; then
+      echo "::error::The model output contains a credential"
+      exit 1
+    fi
+  done
 fi
 
 # Disable GitHub workflow commands while printing untrusted model output and tool logs.
@@ -75,6 +72,10 @@ jq -r 'select(.type == "step_finish") | .part
   | "Step: \(.reason), output tokens: \(.tokens.output), reasoning tokens: \(.tokens.reasoning)"' \
   "$EVENTS" || true
 echo "::$STOP::"
+if [ "$STATUS" -ne 0 ]; then
+  echo "::error::The model run did not complete (exit status: $STATUS)"
+  exit 1
+fi
 # Earlier text events can be progress updates. Use the last text event as the answer.
 jq -rs '[.[] | select(.type == "text") | .part.text] | last // ""' "$EVENTS" >"$OUTPUT"
 if ! [ -s "$OUTPUT" ] || ! grep -q '[^[:space:]]' "$OUTPUT"; then

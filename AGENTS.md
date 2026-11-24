@@ -79,3 +79,12 @@ and where to find its tests.
 ## Troubleshooting
 
 If `README.rst` differs from CI, use `.github/workflows/ci.yml` for verification and report the exact discrepancy. Do not change documentation unless the change caused the divergence or the user explicitly requests it.
+
+## Bot Testing Ground
+
+For pull requests titled with `[change]`, `[feature]`, or `[fix]`, create a
+pull request in `openwisp/bot-testing-ground` that exercises the change and link
+it in the description as manual test evidence. Design the test to demonstrate
+the intended behavior. Investigate failures, fix issues in scope, and repeat the
+test as needed. Do not merge test or prerequisite pull requests without explicit
+authorization, and report any behavior that could not be verified.

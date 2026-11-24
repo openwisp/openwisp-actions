@@ -13,7 +13,7 @@ ACTION = ROOT / "ci-cache" / "action.yml"
 def cache_key(tmp_path, mode, dependency_hash, **variables):
     action = yaml.safe_load(ACTION.read_text())
     script = action["runs"]["steps"][0]["run"]
-    output = tmp_path / mode
+    output = tmp_path / f"{mode}-{dependency_hash}"
     env = {
         **os.environ,
         "MODE": mode,

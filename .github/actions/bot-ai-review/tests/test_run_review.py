@@ -84,7 +84,15 @@ class TestRunReview(unittest.TestCase):
         with open(os.path.join(root, "args")) as f:
             self.assertIn("--variant\nxhigh\n", f.read())
 
-    def run_review(self, event, status=0, guidance=False, effort="", metadata=None):
+    def run_review(
+        self,
+        event,
+        status=0,
+        guidance=False,
+        effort="",
+        metadata=None,
+        ci_results=False,
+    ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = directory.name
@@ -93,6 +101,8 @@ class TestRunReview(unittest.TestCase):
         files = ["pr.diff", "context.json", "history.json"]
         if guidance:
             files.append("guidance.md")
+        if ci_results:
+            files.append("ci-results.json")
         for name in files:
             with open(os.path.join(root, "data", name), "w") as f:
                 f.write("guidance")
@@ -126,3 +136,10 @@ class TestRunReview(unittest.TestCase):
             "MODEL_STATUS": str(status),
         }
         return root, subprocess.run(["bash", SCRIPT], env=env, capture_output=True)
+
+    def test_ci_results_are_attached_when_available(self):
+        event = {"type": "text", "part": {"text": "not JSON"}}
+        root, result = self.run_review(event, ci_results=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(os.path.join(root, "args")) as f:
+            self.assertIn(f"{root}/data/ci-results.json", f.read().splitlines())

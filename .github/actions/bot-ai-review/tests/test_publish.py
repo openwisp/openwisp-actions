@@ -30,6 +30,9 @@ FAKE_GH = """#!/usr/bin/env bash
 echo "gh $*" >>"$STATE/log"
 case "$*" in
   *"--jq .head.sha"*) echo "$REMOTE_HEAD" ;;
+  *"--jq .state"*) echo "${REMOTE_STATE:-open}" ;;
+  *"--jq .base.ref"*) echo "${REMOTE_BASE:-master}" ;;
+  *"issues/comments/9 --jq .user.id"*) echo 42 ;;
   "api --paginate "*) cat "$STATE/reviews.json" ;;
   "api -X POST "*) cat >"$STATE/review.json" ;;
 esac
@@ -58,7 +61,18 @@ COMMENT = {"file": "a.py", "line": 1, "body": "x"}
 
 
 def publish(
-    findings, comments=(COMMENT,), remote_head=HEAD_SHA, fail_push=False, stage="review"
+    findings,
+    comments=(COMMENT,),
+    remote_head=HEAD_SHA,
+    fail_push=False,
+    stage="review",
+    remote_state="open",
+    ci_aware=False,
+    ci_standard_status="unknown",
+    ci_standard_missing="",
+    remote_base="master",
+    capture_output=False,
+    lookup_user_id=42,
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
@@ -74,6 +88,16 @@ def publish(
                 }
                 for review in REVIEWS
             ]
+            if ci_aware:
+                reviews.append(
+                    {
+                        "id": 3,
+                        "user": {"type": "Bot", "id": lookup_user_id},
+                        "body": "AI review <!-- ai-review-run 123-1 -->",
+                        "html_url": "https://example.test/review/3",
+                        "state": "COMMENTED",
+                    }
+                )
             json.dump(reviews, f)
         path = os.path.join(state, "findings.json")
         with open(path, "w") as f:
@@ -87,9 +111,19 @@ def publish(
             "PR_NUMBER": "1",
             "HEAD_SHA": HEAD_SHA,
             "REMOTE_HEAD": remote_head,
+            "REMOTE_STATE": remote_state,
+            "BASE_REF": "master",
+            "REMOTE_BASE": remote_base,
+            "CI_AWARE": str(ci_aware).lower(),
+            "CI_STANDARD_STATUS": ci_standard_status,
+            "CI_STANDARD_MISSING": ci_standard_missing,
             "FAIL_PUSH": str(int(fail_push)),
             "STAGE": stage,
             "MODEL": "provider/model",
+            "GITHUB_RUN_ID": "123",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_OUTPUT": os.path.join(state, "github_output"),
+            "RECORD_ID": "9",
         }
         result = subprocess.run(["bash", SCRIPT], env=env, capture_output=True)
         with open(os.path.join(state, "log")) as f:
@@ -100,9 +134,20 @@ def publish(
                 review = json.load(f)
         else:
             review = None
-        if remote_head != HEAD_SHA or fail_push:
+        if (
+            remote_head != HEAD_SHA
+            or fail_push
+            or remote_state != "open"
+            or remote_base != "master"
+        ):
             return result.returncode, log
         assert result.returncode == 0, result.stderr
+        if capture_output:
+            output = os.path.join(state, "github_output")
+            if os.path.exists(output):
+                with open(output) as output_file:
+                    return log, review, output_file.read()
+            return log, review, ""
         return log, review
 
 
@@ -230,6 +275,61 @@ class TestPublish(unittest.TestCase):
                 findings, comments=findings["comments"], stage="final-review"
             )
             self.assertEqual(dismissals(log), [])
+
+    def test_review_discloses_when_ci_was_not_awaited(self):
+        _, review = publish(APPROVED, comments=(), stage="final-review")
+        self.assertEqual(review["event"], "APPROVE")
+        self.assertIn("CI was not checked or awaited", review["body"])
+        self.assertIn(
+            "https://github.com/openwisp/openwisp-actions/issues/39", review["body"]
+        )
+
+    def test_closed_pull_request_stops_publication(self):
+        status, log = publish(APPROVED, comments=(), remote_state="closed")
+        self.assertNotEqual(status, 0)
+        self.assertFalse(any("api -X POST" in line for line in log))
+
+    def test_ci_aware_review_omits_fallback_notice(self):
+        _, review = publish(APPROVED, comments=(), ci_aware=True)
+        self.assertNotIn("CI was not checked or awaited", review["body"])
+
+    def test_review_reports_missing_ci_entry_points_without_changing_verdict(self):
+        _, review = publish(
+            APPROVED,
+            comments=(),
+            ci_standard_status="missing",
+            ci_standard_missing=".github/workflows/ci.yml, install-ci-deps.sh",
+        )
+        self.assertEqual(review["event"], "APPROVE")
+        self.assertIn(".github/workflows/ci.yml, install-ci-deps.sh", review["body"])
+
+    def test_review_distinguishes_unknown_check_from_missing_files(self):
+        _, review = publish(APPROVED, comments=(), ci_standard_status="unknown")
+        self.assertIn("could not be checked", review["body"])
+
+    def test_review_does_not_claim_present_files_are_missing(self):
+        _, review = publish(APPROVED, comments=(), ci_standard_status="present")
+        self.assertNotIn("Missing CI entry points", review["body"])
+        self.assertNotIn("could not be checked", review["body"])
+
+    def test_retargeted_pull_request_stops_publication(self):
+        status, log = publish(APPROVED, comments=(), remote_base="release")
+        self.assertNotEqual(status, 0)
+        self.assertFalse(any("api -X POST" in line for line in log))
+
+    def test_ci_aware_publication_returns_exact_review_link(self):
+        for comments in ((), (COMMENT,)):
+            with self.subTest(comments=comments):
+                _, _, output = publish(
+                    APPROVED, comments=comments, ci_aware=True, capture_output=True
+                )
+                self.assertEqual(output, "review_url=https://example.test/review/3\n")
+
+    def test_review_link_does_not_match_another_bot(self):
+        _, _, output = publish(
+            APPROVED, comments=(), ci_aware=True, capture_output=True, lookup_user_id=43
+        )
+        self.assertEqual(output, "")
 
 
 if __name__ == "__main__":

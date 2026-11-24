@@ -27,7 +27,15 @@ def runner(tmp_path):
         "    if os.environ.get('API_FAIL') == '1':\n"
         "        sys.exit(1)\n"
         "    if '--allow-escape-sequences' in args:\n"
-        "        print(os.environ.get('LOG_RESPONSE', ''))\n"
+        "        job = args[-1].split('/')[-2]\n"
+        "        if job == os.environ.get('FAIL_LOG_JOB'):\n"
+        "            sys.exit(1)\n"
+        "        if os.environ.get('LARGE_LOG'):\n"
+        "            if os.environ.get('LARGE_LOG_ERROR'):\n"
+        "                print('##[group]test\\n##[error]early failure', flush=True)\n"
+        "            print('x' * 2000000)\n"
+        "            sys.exit(0)\n"
+        "        print(os.environ.get('LOG_RESPONSE_' + job, os.environ.get('LOG_RESPONSE', '')))\n"
         "    elif '--method' in args and 'OPEN_PRS' in os.environ:\n"
         "        print(os.environ['OPEN_PRS'])\n"
         "    else:\n"
@@ -226,3 +234,131 @@ def test_retry_reports_failed_rerun_without_notification(runner):
     assert (directory / "output").read_text() == "retried=false\n"
     assert len([call for call in calls if "-X" in call]) == 1
     assert not any(call[1:3] == ["pr", "comment"] for call in calls)
+
+
+def test_fetch_logs_selects_attempt_and_marks_truncated_output(runner):
+    directory, run = runner
+    logs = "##[group]test\n" + "x" * 200 + "\n##[error]failed\n"
+    result, calls = run(
+        "fetch_logs",
+        API_RESPONSE="17",
+        LOG_RESPONSE=logs,
+        ATTEMPT="2",
+        MAX_LOG_BYTES="40",
+    )
+    assert result.returncode == 0
+    assert "repos/example/repo/actions/runs/123/attempts/2/jobs" in calls[0]
+    assert "truncated" in (directory / "failed_logs.txt").read_text().lower()
+    assert "##[error]failed" in (directory / "failed_logs.txt").read_text()
+
+
+def test_bounded_logs_keep_the_error_from_each_failed_job(runner):
+    directory, run = runner
+    first = "##[group]test\n" + "x" * 300 + "\n##[error]first failure\n"
+    second = "##[group]test\n" + "y" * 300 + "\n##[error]second failure\n"
+    result, _ = run(
+        "fetch_logs",
+        API_RESPONSE="17\n18",
+        LOG_RESPONSE_17=first,
+        LOG_RESPONSE_18=second,
+        MAX_LOG_BYTES="160",
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "first failure" in excerpt
+    assert "second failure" in excerpt
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 160
+
+
+def test_bounded_logs_mark_an_unavailable_job_without_exceeding_the_limit(runner):
+    directory, run = runner
+    result, _ = run(
+        "fetch_logs",
+        API_RESPONSE="17\n18",
+        FAIL_LOG_JOB="17",
+        LOG_RESPONSE_18="##[group]test\n##[error]failed\n",
+        MAX_LOG_BYTES="80",
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "unavailable" in excerpt.lower()
+    assert "failed" in excerpt
+    assert len(excerpt.encode()) <= 80
+
+
+def test_unavailable_logs_remain_within_the_minimum_job_limit(runner):
+    directory, run = runner
+    result, _ = run(
+        "fetch_logs", API_RESPONSE="17", FAIL_LOG_JOB="17", MAX_LOG_BYTES="32"
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "unavailable" in excerpt.lower()
+    assert len(excerpt.encode()) <= 32
+
+
+def test_unavailable_job_list_respects_the_output_limit(runner):
+    directory, run = runner
+    result, _ = run("fetch_logs", API_FAIL="1", MAX_LOG_BYTES="32")
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "unavailable" in excerpt.lower()
+    assert len(excerpt.encode()) <= 32
+
+
+def test_bounded_logs_keep_earlier_errors_within_the_same_job(runner):
+    directory, run = runner
+    logs = (
+        "##[group]test\n"
+        + "x" * 300
+        + "\n##[error]original failure\n"
+        + "##[group]cleanup\n"
+        + "y" * 300
+        + "\n##[error]cleanup failure\n"
+    )
+    result, _ = run(
+        "fetch_logs", API_RESPONSE="17", LOG_RESPONSE=logs, MAX_LOG_BYTES="160"
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "original failure" in excerpt
+    assert "cleanup failure" in excerpt
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 160
+
+
+def test_many_errors_with_a_small_limit_still_mark_truncation(runner):
+    directory, run = runner
+    logs = "".join(f"##[group]test\n##[error]failure {index}\n" for index in range(10))
+    result, _ = run(
+        "fetch_logs", API_RESPONSE="17", LOG_RESPONSE=logs, MAX_LOG_BYTES="32"
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 32
+
+
+def test_large_job_log_is_bounded_and_marked_incomplete(runner):
+    directory, run = runner
+    result, _ = run("fetch_logs", API_RESPONSE="17", LARGE_LOG="1", MAX_LOG_BYTES="80")
+    assert result.returncode == 0
+    assert (directory / "job_logs.txt").stat().st_size <= 1048577
+    assert "truncated" in (directory / "failed_logs.txt").read_text().lower()
+
+
+def test_large_job_log_keeps_errors_in_the_bounded_prefix(runner):
+    directory, run = runner
+    result, _ = run(
+        "fetch_logs",
+        API_RESPONSE="17",
+        LARGE_LOG="1",
+        LARGE_LOG_ERROR="1",
+        MAX_LOG_BYTES="80",
+    )
+    assert result.returncode == 0
+    excerpt = (directory / "failed_logs.txt").read_text()
+    assert "early failure" in excerpt
+    assert "truncated" in excerpt.lower()
+    assert len(excerpt.encode()) <= 80

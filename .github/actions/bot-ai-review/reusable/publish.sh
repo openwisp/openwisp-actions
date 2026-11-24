@@ -14,17 +14,43 @@ BODY="AI $STAGE of $HEAD_SHA provided by \`${MODEL%%/*}\` / \`${MODEL#*/}\`
 **Verdict: $VERDICT**
 
 "
+if [ "${CI_AWARE:-false}" != true ]; then
+  BODY+="
+CI was not checked or awaited. Maintainers can enable CI-aware reviews:
+https://github.com/openwisp/openwisp-actions/issues/39
+
+"
+fi
+case "${CI_STANDARD_STATUS:-unknown}" in
+  missing)
+    BODY+="Missing CI entry points on the base branch: $CI_STANDARD_MISSING.
+See https://github.com/openwisp/openwisp-actions/issues/39.
+
+" ;;
+  unknown)
+    BODY+="CI entry points could not be checked on the base branch.
+
+" ;;
+esac
 if [ -n "$TITLE" ]; then
   BODY+="$TITLE
 
 "
 fi
 BODY+=$SUMMARY
+if [ "${CI_AWARE:-false}" = true ]; then
+  # Identify this exact publication even when Crit posts the review with inline comments.
+  REVIEW_MARKER="<!-- ai-review-run ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1} -->"
+  BODY+=$'\n\n'"$REVIEW_MARKER"
+fi
 COMMENTS="$RUNNER_TEMP/comments.json"
 jq '.comments' "$FINDINGS" >"$COMMENTS"
 CURRENT_SHA=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
-if [ "$CURRENT_SHA" != "$HEAD_SHA" ]; then
-  echo "::error::The pull request changed during the review, request it again"
+CURRENT_STATE=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.state')
+CURRENT_BASE=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.base.ref')
+if [ "$CURRENT_SHA" != "$HEAD_SHA" ] || [ "$CURRENT_STATE" != open ] || \
+  [ "$CURRENT_BASE" != "$BASE_REF" ]; then
+  echo "::error::The pull request changed or closed during the review, request it again"
   exit 1
 fi
 if [ "$(jq 'length' "$COMMENTS")" -eq 0 ]; then
@@ -36,6 +62,19 @@ if [ "$(jq 'length' "$COMMENTS")" -eq 0 ]; then
 else
   crit comment --json --file "$COMMENTS"
   crit push "$PR_NUMBER" --event "$EVENT" --message "$BODY"
+fi
+if [ "${CI_AWARE:-false}" = true ] && [ -n "${RECORD_ID:-}" ]; then
+  # Match the marker and the app's bot account, not an unrelated review of the same commit.
+  if BOT_ID=$(gh api "repos/$REPOSITORY/issues/comments/$RECORD_ID" --jq '.user.id') && \
+    REVIEW_URL=$(gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" | \
+      jq -rs --arg marker "$REVIEW_MARKER" --arg bot "$BOT_ID" '
+        [.[][] | select((.user.id | tostring) == $bot and ((.body // "") | contains($marker)))]
+        | if length == 1 then .[0].html_url else empty end') && \
+    [[ "$REVIEW_URL" == https://* && "$REVIEW_URL" != *$'\n'* ]]; then
+    printf 'review_url=%s\n' "$REVIEW_URL" >> "$GITHUB_OUTPUT"
+  else
+    echo '::warning::Published review link is unavailable.'
+  fi
 fi
 case "$VERDICT" in
   "Review not completed" | Inconclusive | "Maintainer decision needed") exit 0 ;;

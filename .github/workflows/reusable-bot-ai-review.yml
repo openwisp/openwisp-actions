@@ -353,6 +353,8 @@ jobs:
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/install_crit.sh
 
       - name: Fetch pull request for publication
+        # The workflow token can read private repositories without requiring
+        # existing App installations to grant an additional Contents permission.
         env:
           GH_TOKEN: ${{ github.token }}
           GIT_CONFIG_COUNT: "2"

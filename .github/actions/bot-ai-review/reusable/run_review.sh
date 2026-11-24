@@ -59,13 +59,19 @@ if [ -f "$AUTH" ]; then
     exit 1
   fi
   rm -f "$AUTH"
-  while IFS= read -r TOKEN; do
-    [ -n "$TOKEN" ] || continue
-    if grep -qF -- "$TOKEN" "$EVENTS"; then
+  if [ -n "$TOKENS" ]; then
+    # Pass tokens through stdin so sandbox processes cannot read them in the process list.
+    if printf '%s\n' "$TOKENS" | grep -qF -f - "$EVENTS"; then
       echo "::error::The model output contains a credential"
       exit 1
+    else
+      SCAN_STATUS=$?
+      if [ "$SCAN_STATUS" -ne 1 ]; then
+        echo "::error::Could not check model output for credentials"
+        exit 1
+      fi
     fi
-  done <<<"$TOKENS"
+  fi
 fi
 
 # Disable GitHub workflow commands while printing untrusted model output and tool logs.

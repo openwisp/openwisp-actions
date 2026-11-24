@@ -93,6 +93,7 @@ class TestRunReview(unittest.TestCase):
         metadata=None,
         ci_results=False,
         auth=None,
+        grep_script=None,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -131,6 +132,11 @@ class TestRunReview(unittest.TestCase):
                 'exit "$MODEL_STATUS"\n'
             )
         os.chmod(fake, 0o755)
+        if grep_script:
+            grep = os.path.join(root, "bin", "grep")
+            with open(grep, "w") as f:
+                f.write(grep_script)
+            os.chmod(grep, 0o755)
         env = {
             **os.environ,
             "PATH": f"{root}/bin:{os.environ['PATH']}",
@@ -171,6 +177,7 @@ class TestRunReview(unittest.TestCase):
             auth={"refresh": "refresh-secret", "access": "access-secret"},
         )
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"The model output contains a credential", result.stdout)
         self.assertNotIn(b"access-secret", result.stdout)
 
     def test_malformed_auth_stops_before_logging_model_output(self):
@@ -180,3 +187,27 @@ class TestRunReview(unittest.TestCase):
         self.assertNotIn(b"secret-value", result.stdout)
         self.assertIn(b"Could not check model output for credentials", result.stdout)
         self.assertFalse(os.path.exists(f"{root}/opencode-data/opencode/auth.json"))
+
+    def test_credential_scan_does_not_put_token_in_arguments(self):
+        event = {"type": "error", "error": {"data": {"message": "access-secret"}}}
+        root, result = self.run_review(
+            event,
+            status=1,
+            auth={"access": "access-secret"},
+            grep_script='#!/bin/sh\nprintf "%s\\n" "$@" >"$RUNNER_TEMP/grep-args"\nexec /usr/bin/grep "$@"\n',
+        )
+        self.assertIn(b"The model output contains a credential", result.stdout)
+        with open(os.path.join(root, "grep-args")) as f:
+            self.assertNotIn("access-secret", f.read())
+
+    def test_credential_scan_error_stops_before_logging_model_output(self):
+        event = {"type": "error", "error": {"data": {"message": "provider message"}}}
+        _, result = self.run_review(
+            event,
+            status=1,
+            auth={"access": "access-secret"},
+            grep_script="#!/bin/sh\nexit 2\n",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"Could not check model output for credentials", result.stdout)
+        self.assertNotIn(b"provider message", result.stdout)

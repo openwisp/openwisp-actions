@@ -387,6 +387,8 @@ jobs:
                 steps.platform.outputs.image_os, steps.qa-python.outputs.python-version,
                 hashFiles('install-ci-deps.sh')) }}
 
+      # Repositories can cache downloads such as Ansible roles and collections in
+      # ~/.cache/ci-deps. APT downloads are included only if the installer puts them there.
       - name: Restore other dependency downloads
         if: steps.ci.outputs.extra_cache_glob != ''
         uses: $/.github/actions/ci-cache

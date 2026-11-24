@@ -103,7 +103,10 @@ class TestRunReview(unittest.TestCase):
             auth_dir = os.path.join(root, "opencode-data", "opencode")
             os.makedirs(auth_dir)
             with open(os.path.join(auth_dir, "auth.json"), "w") as f:
-                json.dump({"provider": auth}, f)
+                if isinstance(auth, str):
+                    f.write(auth)
+                else:
+                    json.dump({"provider": auth}, f)
         files = ["pr.diff", "context.json", "history.json"]
         if guidance:
             files.append("guidance.md")
@@ -169,3 +172,11 @@ class TestRunReview(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn(b"access-secret", result.stdout)
+
+    def test_malformed_auth_stops_before_logging_model_output(self):
+        event = {"type": "error", "error": {"data": {"message": "secret-value"}}}
+        root, result = self.run_review(event, status=1, auth='{"access":"secret-value"')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(b"secret-value", result.stdout)
+        self.assertIn(b"Could not check model output for credentials", result.stdout)
+        self.assertFalse(os.path.exists(f"{root}/opencode-data/opencode/auth.json"))

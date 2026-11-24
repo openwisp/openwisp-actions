@@ -52,14 +52,20 @@ fi
 
 AUTH="$XDG_DATA_HOME/opencode/auth.json"
 if [ -f "$AUTH" ]; then
-  mapfile -t TOKENS < <(jq -r '.[] | .refresh, .access | select(type == "string" and length > 0)' "$AUTH")
+  if ! TOKENS=$(jq -r '.[] | .refresh, .access | select(type == "string" and length > 0)' \
+    "$AUTH" 2>/dev/null); then
+    rm -f "$AUTH"
+    echo "::error::Could not check model output for credentials"
+    exit 1
+  fi
   rm -f "$AUTH"
-  for TOKEN in "${TOKENS[@]}"; do
+  while IFS= read -r TOKEN; do
+    [ -n "$TOKEN" ] || continue
     if grep -qF -- "$TOKEN" "$EVENTS"; then
       echo "::error::The model output contains a credential"
       exit 1
     fi
-  done
+  done <<<"$TOKENS"
 fi
 
 # Disable GitHub workflow commands while printing untrusted model output and tool logs.

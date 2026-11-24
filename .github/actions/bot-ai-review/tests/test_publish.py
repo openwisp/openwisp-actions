@@ -40,7 +40,7 @@ case "$*" in
   *"--jq .base.ref"*) echo "${REMOTE_BASE:-master}" ;;
   *"issues/comments/9 --jq .user.id"*) echo 42 ;;
   *"/dismissals"*) if [ "${FAIL_DISMISS:-}" = 1 ]; then echo 'dismissal denied' >&2; exit 1; fi ;;
-  "api --paginate "*) cat "$STATE/reviews.json" ;;
+  "api --paginate "*) if [ "${FAIL_LIST:-}" = 1 ]; then exit 1; fi; cat "$STATE/reviews.json" ;;
   "api -X POST "*) cat >"$STATE/review.json" ;;
 esac
 """
@@ -81,6 +81,7 @@ def publish(
     capture_output=False,
     lookup_user_id=42,
     fail_dismiss=False,
+    fail_list=False,
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
@@ -127,6 +128,7 @@ def publish(
             "CI_STANDARD_MISSING": ci_standard_missing,
             "FAIL_PUSH": str(int(fail_push)),
             "FAIL_DISMISS": str(int(fail_dismiss)),
+            "FAIL_LIST": str(int(fail_list)),
             "STAGE": stage,
             "MODEL": "provider/model",
             "GITHUB_RUN_ID": "123",
@@ -138,6 +140,11 @@ def publish(
         if fail_dismiss:
             assert (
                 b"Published the review, but could not dismiss earlier review 1"
+                in result.stdout
+            )
+        if fail_list:
+            assert (
+                b"Published the review, but could not list earlier reviews"
                 in result.stdout
             )
         with open(os.path.join(state, "log")) as f:
@@ -349,6 +356,11 @@ class TestPublish(unittest.TestCase):
         log, review = publish(APPROVED, comments=(), fail_dismiss=True)
         self.assertEqual(review["event"], "APPROVE")
         self.assertEqual(len(dismissals(log)), 1)
+
+    def test_review_listing_failure_does_not_report_publication_failure(self):
+        log, review = publish(APPROVED, comments=(), fail_list=True)
+        self.assertEqual(review["event"], "APPROVE")
+        self.assertEqual(dismissals(log), [])
 
 
 if __name__ == "__main__":

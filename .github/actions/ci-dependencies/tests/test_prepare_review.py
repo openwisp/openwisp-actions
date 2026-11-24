@@ -24,6 +24,9 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
     pip_cache = runner_home / ".cache" / "pip"
     pip_cache.mkdir(parents=True)
     (pip_cache / "package").write_text("pip cache")
+    extra_cache = runner_home / ".cache" / "ci-deps"
+    extra_cache.mkdir()
+    (extra_cache / "package").write_text("other cache")
     yarn_cache = tmp_path / "yarn" / "v6"
     yarn_cache.mkdir(parents=True)
     (yarn_cache / "package").write_text("yarn cache")
@@ -74,6 +77,7 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
     if system_deps:
         assert (base / "system.txt").read_text() == "base:unset"
     assert (home / ".cache" / "pip" / "package").read_text() == "pip cache"
+    assert (home / ".cache" / "ci-deps" / "package").read_text() == "other cache"
     assert (home / ".cache" / "yarn" / "v6" / "package").read_text() == "yarn cache"
     subprocess.run(
         [str(SYNC), str(pr), str(run), str(home / ".ai-review-files")],

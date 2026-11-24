@@ -38,5 +38,6 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
     assert environment["SE_CHROMEDRIVER"] == "/opt/chrome/chromedriver"
     assert environment["GECKO_BIN"] == "/usr/bin/firefox"
     assert environment["SELENIUM_HEADLESS"] == "1"
+    assert environment["CI_DEPS_CACHE"] == "/home/reviewer/.cache/ci-deps"
     assert "NPM_CONFIG_USERCONFIG" not in environment
     assert "SECRET_SENTINEL" not in environment

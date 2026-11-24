@@ -19,16 +19,22 @@ if [ -n "${YARN_CACHE_DIR:-}" ] && [ -d "$YARN_CACHE_DIR" ]; then
   sudo cp -a "$YARN_CACHE_DIR" "$REVIEW_HOME/.cache/yarn/"
 fi
 sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache"
+mkdir -p "$HOME/.cache/ci-deps"
 SYSTEM_DEPS_READY=0
 if [ -f "$GITHUB_WORKSPACE/.ci-review-system-deps" ]; then
   # Only trusted base-branch code runs with access to the runner's sudo privileges.
   (cd "$GITHUB_WORKSPACE" && env -i HOME="$HOME" PATH="$PATH" \
-    CI_SYSTEM_DEPS_ONLY=1 bash ./install-ci-deps.sh)
+    CI_DEPS_CACHE="$HOME/.cache/ci-deps" CI_SYSTEM_DEPS_ONLY=1 bash ./install-ci-deps.sh)
   SYSTEM_DEPS_READY=1
+fi
+if [ -d "$HOME/.cache/ci-deps" ]; then
+  sudo cp -a "$HOME/.cache/ci-deps" "$REVIEW_HOME/.cache/"
+  sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache/ci-deps"
 fi
 cd "$RUN"
 sudo -n -H -u reviewer env -i HOME="$REVIEW_HOME" USER=reviewer LOGNAME=reviewer \
   PATH="$PATH" DJANGO_VERSION="${DJANGO_VERSION:-}" CI_QA="${CI_QA:-0}" \
   CI_SYSTEM_DEPS_READY="$SYSTEM_DEPS_READY" \
+  CI_DEPS_CACHE="$REVIEW_HOME/.cache/ci-deps" \
   YARN_CACHE_FOLDER="$REVIEW_HOME/.cache/yarn" \
   bash ./install-ci-deps.sh

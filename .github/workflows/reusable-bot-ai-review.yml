@@ -287,6 +287,18 @@ jobs:
                 steps.platform.outputs.image_os, steps.qa-python.outputs.python-version,
                 hashFiles('install-ci-deps.sh')) }}
 
+      - name: Restore other dependency downloads
+        if: steps.ci.outputs.extra_cache_glob != ''
+        uses: $/.github/actions/ci-cache
+        with:
+          mode: restore
+          dependency-glob: ${{ steps.ci.outputs.extra_cache_glob }}
+          image-os: ${{ steps.platform.outputs.image_os }}
+          python-version: ${{ steps.python.outputs.python-version || steps.qa-python.outputs.python-version }}
+          node-version: ${{ steps.node.outputs.node-version }}
+          django-version: ${{ steps.ci.outputs.django_version }}
+          variant: ${{ steps.ci.outputs.extra_cache_variant }}
+
       - name: Install trusted CI dependencies
         if: steps.ci.outcome == 'success'
         env:

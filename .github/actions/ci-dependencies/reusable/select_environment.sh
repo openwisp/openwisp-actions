@@ -8,6 +8,7 @@ MATRIX=$(jq '.strategy.matrix // null' <<<"$JOB")
 PYTHON_VERSION=
 DJANGO_VERSION=
 NODE_VERSION=
+ROW='{}'
 if [ "$MATRIX" = null ]; then
   if [ -n "${REVIEW_MATRIX_OVERRIDE:-}" ]; then
     echo "::error::A matrix override requires a CI matrix" >&2
@@ -33,7 +34,8 @@ if [ -z "$NODE_VERSION" ]; then
 fi
 NODE_VERSION_FILE=$(jq -r '[.steps[]? | select((.uses // "") | startswith("actions/setup-node@")) |
   .with["node-version-file"] // ""] | first // ""' <<<"$JOB")
-if [ -z "$NODE_VERSION" ] && [ -z "$NODE_VERSION_FILE" ] && [ -f "$CI_ROOT/.nvmrc" ]; then
+if [ -z "$PYTHON_VERSION" ] && [ -z "$NODE_VERSION" ] && [ -z "$NODE_VERSION_FILE" ] &&
+  [ -f "$CI_ROOT/.nvmrc" ]; then
   NODE_VERSION_FILE=.nvmrc
 fi
 if [ -z "$PYTHON_VERSION" ] && [ -z "$NODE_VERSION_FILE" ] && [ -z "$NODE_VERSION" ]; then
@@ -55,6 +57,26 @@ case "$BROWSERS" in
   chrome,firefox|firefox,chrome) CHROME=true; FIREFOX=true ;;
   *) echo "::error::Unsupported AI_REVIEW_BROWSERS: $BROWSERS" >&2; exit 1 ;;
 esac
+CACHE_GLOB=$(jq -r '.env.AI_REVIEW_CACHE_GLOB // ""' <<<"$JOB")
+if [ -n "$CACHE_GLOB" ] &&
+  { [[ ! "$CACHE_GLOB" =~ ^[a-zA-Z0-9_./*?-]+$ ]] || [[ "$CACHE_GLOB" == *..* ]]; }; then
+  echo "::error::Invalid AI_REVIEW_CACHE_GLOB" >&2
+  exit 1
+fi
+CACHE_AXES=$(jq -r '.env.AI_REVIEW_CACHE_AXES // ""' <<<"$JOB")
+CACHE_VARIANT=
+if [ -n "$CACHE_AXES" ]; then
+  if [[ ! "$CACHE_AXES" =~ ^[a-zA-Z0-9_,-]+$ ]]; then
+    echo "::error::Invalid AI_REVIEW_CACHE_AXES" >&2
+    exit 1
+  fi
+  CACHE_VARIANT=$(jq -er --arg axes "$CACHE_AXES" \
+    '. as $row | ($axes | split(",")) as $keys |
+     [$keys[] as $key |
+      (if $row | has($key) then $row[$key] else error("missing cache axis") end) | tostring |
+      if test("^[a-zA-Z0-9_.-]+$") then . else error("invalid cache axis") end] | join(":")' \
+    <<<"$ROW")
+fi
 {
   echo "python_version=$PYTHON_VERSION"
   echo "django_version=$DJANGO_VERSION"
@@ -62,4 +84,6 @@ esac
   echo "node_version=$NODE_VERSION"
   echo "chrome=$CHROME"
   echo "firefox=$FIREFOX"
+  echo "extra_cache_glob=$CACHE_GLOB"
+  echo "extra_cache_variant=$CACHE_VARIANT"
 } >> "$GITHUB_OUTPUT"

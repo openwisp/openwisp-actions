@@ -33,6 +33,8 @@ def test_selects_python_and_django_from_workflow(tmp_path):
         "node_version=",
         "chrome=false",
         "firefox=false",
+        "extra_cache_glob=",
+        "extra_cache_variant=",
     ]
 
 
@@ -57,6 +59,8 @@ def test_selects_python_from_non_matrix_workflow(tmp_path):
         "node_version=",
         "chrome=false",
         "firefox=false",
+        "extra_cache_glob=",
+        "extra_cache_variant=",
     ]
 
 
@@ -195,3 +199,89 @@ def test_rejects_unknown_browser(tmp_path):
     )
     assert result.returncode != 0
     assert "browser" in result.stderr.lower()
+
+
+def test_reads_optional_dependency_cache_glob(tmp_path):
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        'jobs:\n  test:\n    env:\n      AI_REVIEW_CACHE_GLOB: "**/requirements*.txt"\n'
+        "    steps:\n      - uses: actions/setup-python@abcdef\n"
+        '        with:\n          python-version: "3.12"\n'
+    )
+    output = tmp_path / "output"
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={**os.environ, "GITHUB_OUTPUT": str(output), "CI_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "extra_cache_glob=**/requirements*.txt" in output.read_text().splitlines()
+
+
+def test_rejects_unsafe_dependency_cache_glob(tmp_path):
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        'jobs:\n  test:\n    env:\n      AI_REVIEW_CACHE_GLOB: "../../other"\n'
+        "    steps:\n      - uses: actions/setup-python@abcdef\n"
+        '        with:\n          python-version: "3.12"\n'
+    )
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={
+            **os.environ,
+            "GITHUB_OUTPUT": str(tmp_path / "output"),
+            "CI_ROOT": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "cache" in result.stderr.lower()
+
+
+def test_cache_variant_uses_the_selected_matrix_axes(tmp_path):
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        'jobs:\n  test:\n    env:\n      AI_REVIEW_CACHE_GLOB: "requirements*.txt"\n'
+        '      AI_REVIEW_CACHE_AXES: "distro,target"\n'
+        '    strategy:\n      matrix:\n        distro: ["debian", "ubuntu"]\n'
+        '        target: ["arm"]\n        include:\n          - distro: "ubuntu"\n'
+        '            target: "arm"\n            review_default: true\n'
+        "    steps:\n      - uses: actions/setup-python@abcdef\n"
+        '        with:\n          python-version: "3.12"\n'
+    )
+    output = tmp_path / "output"
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={**os.environ, "GITHUB_OUTPUT": str(output), "CI_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "extra_cache_variant=ubuntu:arm" in output.read_text().splitlines()
+
+
+def test_cache_variant_supports_false_matrix_values(tmp_path):
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        'jobs:\n  test:\n    env:\n      AI_REVIEW_CACHE_GLOB: "requirements*.txt"\n'
+        '      AI_REVIEW_CACHE_AXES: "feature"\n'
+        "    strategy:\n      matrix:\n        feature: [false]\n"
+        "        include:\n          - feature: false\n            review_default: true\n"
+        "    steps:\n      - uses: actions/setup-python@abcdef\n"
+        '        with:\n          python-version: "3.12"\n'
+    )
+    output = tmp_path / "output"
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={**os.environ, "GITHUB_OUTPUT": str(output), "CI_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "extra_cache_variant=false" in output.read_text().splitlines()

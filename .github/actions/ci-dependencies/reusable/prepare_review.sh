@@ -22,7 +22,8 @@ sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache"
 mkdir -p "$HOME/.cache/ci-deps"
 SYSTEM_DEPS_READY=0
 if [ -f "$GITHUB_WORKSPACE/.ci-review-system-deps" ]; then
-  # Only trusted base-branch code runs with access to the runner's sudo privileges.
+  # Run only the system phase from trusted base code before the reviewer sees PR files.
+  # The reviewer phase must skip system setup because it has no sudo privileges.
   (cd "$GITHUB_WORKSPACE" && env -i HOME="$HOME" PATH="$PATH" \
     CI_DEPS_CACHE="$HOME/.cache/ci-deps" CI_SYSTEM_DEPS_ONLY=1 bash ./install-ci-deps.sh)
   SYSTEM_DEPS_READY=1

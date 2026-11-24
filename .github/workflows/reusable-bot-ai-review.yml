@@ -183,8 +183,15 @@ jobs:
       - name: Prepare sandbox user
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/prepare_sandbox.sh
 
-      - name: Select CI environment
+      - name: Detect standardized CI
         if: ${{ hashFiles('install-ci-deps.sh') != '' }}
+        id: ci-detect
+        env:
+          CI_ROOT: ${{ github.workspace }}
+        run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/detect_ci.sh
+
+      - name: Select CI environment
+        if: steps.ci-detect.outputs.enabled == 'true'
         id: ci
         env:
           CI_ROOT: ${{ github.workspace }}

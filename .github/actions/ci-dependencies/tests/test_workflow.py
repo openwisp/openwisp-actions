@@ -11,8 +11,10 @@ def test_review_continues_without_a_ci_installer():
     )
     steps = yaml.safe_load(workflow.read_text())["jobs"]["review"]["steps"]
     by_name = {step.get("name"): step for step in steps}
+    detect = by_name["Detect standardized CI"]
+    assert detect["if"] == "${{ hashFiles('install-ci-deps.sh') != '' }}"
     select = by_name["Select CI environment"]
-    assert select["if"] == "${{ hashFiles('install-ci-deps.sh') != '' }}"
+    assert select["if"] == "steps.ci-detect.outputs.enabled == 'true'"
     for name in ("Install OpenCode", "Run review", "Upload findings"):
         assert "if" not in by_name[name]
     assert by_name["Install trusted CI dependencies"]["if"] == (

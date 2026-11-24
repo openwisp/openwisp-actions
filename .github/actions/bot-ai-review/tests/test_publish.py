@@ -362,6 +362,11 @@ class TestPublish(unittest.TestCase):
         self.assertEqual(review["event"], "APPROVE")
         self.assertEqual(dismissals(log), [])
 
+    def test_publication_uses_prefetched_commit(self):
+        log, _ = publish(APPROVED, comments=())
+        self.assertTrue(any(line.startswith("git checkout ") for line in log))
+        self.assertFalse(any(line.startswith("git fetch ") for line in log))
+
 
 if __name__ == "__main__":
     unittest.main()

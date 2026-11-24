@@ -103,3 +103,26 @@ def test_version_workflow_runs_trusted_scripts_in_caller_checkout():
                 == "${{ steps." + step["id"] + ".outputs.version }}"
             )
     assert jobs["replicate"]["env"]["VERSION"] == "${{ needs.prepare.outputs.version }}"
+
+
+def test_version_fetch_uses_step_scoped_read_credentials():
+    path = ACTION_DIR.parents[1] / "workflows/reusable-version-branch.yml"
+    jobs = yaml.safe_load(path.read_text())["jobs"]
+    steps = jobs["replicate"]["steps"]
+    fetch = next(
+        step for step in steps if step["name"] == "Fast-forward version branch"
+    )
+    assert fetch["env"] == {
+        "GH_TOKEN": "${{ github.token }}",
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": "credential.helper",
+        "GIT_CONFIG_VALUE_0": "",
+        "GIT_CONFIG_KEY_1": "credential.helper",
+        "GIT_CONFIG_VALUE_1": "!gh auth git-credential",
+    }
+    assert (
+        next(step for step in steps if step["name"] == "Checkout repository")["with"][
+            "persist-credentials"
+        ]
+        is False
+    )

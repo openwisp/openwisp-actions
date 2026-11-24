@@ -96,6 +96,14 @@ jobs:
 
       - name: Fast-forward version branch
         working-directory: caller
+        # Private repositories need authentication when fetching the version branch.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ""
+          GIT_CONFIG_KEY_1: credential.helper
+          GIT_CONFIG_VALUE_1: "!gh auth git-credential"
         run: bash ../openwisp-actions/.github/actions/version-branch/reusable/replicate.sh
 
       - name: Generate GitHub App Token

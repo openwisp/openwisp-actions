@@ -32,8 +32,6 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
     (yarn_cache / "package").write_text("yarn cache")
     (base / "feature.py").write_text("base")
     (base / "deleted.py").write_text("delete me")
-    if system_deps:
-        (base / ".ci-review-system-deps").touch()
     (base / "install-ci-deps.sh").write_text(
         '#!/bin/bash\nif [ "${CI_SYSTEM_DEPS_ONLY:-0}" = 1 ]; then\n'
         '  printf "%s:%s" "$(cat feature.py)" "${SECRET_SENTINEL-unset}" > system.txt\n'
@@ -65,6 +63,7 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
         "GITHUB_WORKSPACE": str(base),
         "YARN_CACHE_DIR": str(yarn_cache),
         "CI_QA": "1",
+        "SYSTEM_DEPS_ENABLED": str(system_deps).lower(),
         "SECRET_SENTINEL": "private",
     }
     subprocess.run(

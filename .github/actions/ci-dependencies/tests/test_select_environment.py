@@ -35,6 +35,7 @@ def test_selects_python_and_django_from_workflow(tmp_path):
         "firefox=false",
         "extra_cache_glob=",
         "extra_cache_variant=",
+        "system_deps=false",
     ]
 
 
@@ -61,6 +62,7 @@ def test_selects_python_from_non_matrix_workflow(tmp_path):
         "firefox=false",
         "extra_cache_glob=",
         "extra_cache_variant=",
+        "system_deps=false",
     ]
 
 
@@ -285,3 +287,48 @@ def test_cache_variant_supports_false_matrix_values(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert "extra_cache_variant=false" in output.read_text().splitlines()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("true", "true"), ("false", "false"), ('"true"', "true")],
+)
+def test_reads_system_dependency_setting(tmp_path, value, expected):
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        f"jobs:\n  test:\n    env:\n      AI_REVIEW_SYSTEM_DEPS: {value}\n"
+        "    steps:\n      - uses: actions/setup-python@abcdef\n"
+        '        with:\n          python-version: "3.12"\n'
+    )
+    output = tmp_path / "output"
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={**os.environ, "GITHUB_OUTPUT": str(output), "CI_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"system_deps={expected}" in output.read_text().splitlines()
+
+
+def test_rejects_invalid_system_dependency_setting(tmp_path):
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "jobs:\n  test:\n    env:\n      AI_REVIEW_SYSTEM_DEPS: invalid\n"
+        "    steps:\n      - uses: actions/setup-python@abcdef\n"
+        '        with:\n          python-version: "3.12"\n'
+    )
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={
+            **os.environ,
+            "GITHUB_OUTPUT": str(tmp_path / "output"),
+            "CI_ROOT": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Invalid AI_REVIEW_SYSTEM_DEPS" in result.stderr

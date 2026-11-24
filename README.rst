@@ -544,8 +544,8 @@ mark one row with ``review_default: true``. Declare required browsers with
 <.github/actions/ci-cache/action.yml>`_ for the supported settings.
 Without standardized CI, reviews continue without dependency setup.
 
-For privileged host dependencies, add ``.ci-review-system-deps`` and
-follow the `installer phase contract
+For privileged host dependencies, set ``AI_REVIEW_SYSTEM_DEPS: "true"`` in
+the test job environment and follow the `installer phase contract
 <.github/actions/ci-dependencies/reusable/prepare_review.sh>`_. Additional
 caches use ``AI_REVIEW_CACHE_GLOB`` and, when needed,
 ``AI_REVIEW_CACHE_AXES``. Privileged setup must use trusted base-branch

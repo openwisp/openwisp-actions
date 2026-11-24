@@ -64,6 +64,11 @@ if [ -n "$CACHE_GLOB" ] &&
   exit 1
 fi
 CACHE_AXES=$(jq -r '.env.AI_REVIEW_CACHE_AXES // ""' <<<"$JOB")
+SYSTEM_DEPS=$(jq -r '.env.AI_REVIEW_SYSTEM_DEPS // false' <<<"$JOB")
+case "$SYSTEM_DEPS" in
+  true|false) ;;
+  *) echo "::error::Invalid AI_REVIEW_SYSTEM_DEPS" >&2; exit 1 ;;
+esac
 CACHE_VARIANT=
 if [ -n "$CACHE_AXES" ]; then
   if [[ ! "$CACHE_AXES" =~ ^[a-zA-Z0-9_,-]+$ ]]; then
@@ -86,4 +91,5 @@ fi
   echo "firefox=$FIREFOX"
   echo "extra_cache_glob=$CACHE_GLOB"
   echo "extra_cache_variant=$CACHE_VARIANT"
+  echo "system_deps=$SYSTEM_DEPS"
 } >> "$GITHUB_OUTPUT"

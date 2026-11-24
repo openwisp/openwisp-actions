@@ -21,7 +21,7 @@ fi
 sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache"
 mkdir -p "$HOME/.cache/ci-deps"
 SYSTEM_DEPS_READY=0
-if [ -f "$GITHUB_WORKSPACE/.ci-review-system-deps" ]; then
+if [ "${SYSTEM_DEPS_ENABLED:-false}" = true ]; then
   # Run only the system phase from trusted base code before the reviewer sees PR files.
   # The reviewer phase must skip system setup because it has no sudo privileges.
   (cd "$GITHUB_WORKSPACE" && env -i HOME="$HOME" PATH="$PATH" \

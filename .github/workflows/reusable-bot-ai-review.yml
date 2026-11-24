@@ -405,6 +405,7 @@ jobs:
           DJANGO_VERSION: ${{ steps.ci.outputs.django_version }}
           YARN_CACHE_DIR: ${{ steps.yarn-cache-dir-path.outputs.dir }}
           CI_QA: ${{ steps.node.outcome == 'success' && '1' || '0' }}
+          SYSTEM_DEPS_ENABLED: ${{ steps.ci.outputs.system_deps }}
         run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/prepare_review.sh
 
       - name: Install OpenCode

@@ -27,6 +27,7 @@ def test_python_cache_includes_runtime_requirements():
     steps = yaml.safe_load(workflow.read_text())["jobs"]["review"]["steps"]
     cache = next(step for step in steps if step.get("name") == "Restore Python cache")
     assert "'requirements.txt'" in cache["with"]["key"]
+    assert "'requirements-qa.txt'" in cache["with"]["key"]
 
 
 def test_django_cache_includes_test_requirements():

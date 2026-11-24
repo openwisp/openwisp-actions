@@ -260,7 +260,8 @@ jobs:
           key: >-
             ${{ format('{0}-{1}-{2}-pip-{3}-{4}-{5}', runner.os, runner.arch,
                 steps.platform.outputs.image_os, steps.python.outputs.python-version,
-                steps.ci.outputs.django_version, hashFiles('setup.py', 'install-ci-deps.sh')) }}
+                steps.ci.outputs.django_version, hashFiles('setup.py', 'requirements-test.txt',
+                'requirements.txt', 'install-ci-deps.sh')) }}
 
       - name: Restore Yarn cache
         if: hashFiles('yarn.lock') != '' && steps.node.outcome == 'success'

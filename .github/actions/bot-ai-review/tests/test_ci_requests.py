@@ -1070,7 +1070,8 @@ class TestCIRequests(unittest.TestCase):
         api = API()
         check_ci(api, 9, self.request.copy(), {})
         self.assertIn("Waiting for [CI to complete](https://example.test/ci)", api.body)
-        self.assertIn("a" * 40, api.body)
+        self.assertIn("before reviewing aaaaaaa.", api.body)
+        self.assertNotIn("`aaaaaaa`", api.body)
 
     def test_waiting_message_is_preserved_through_review_completion(self):
         run = {

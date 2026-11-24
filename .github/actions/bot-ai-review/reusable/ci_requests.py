@@ -300,7 +300,7 @@ def check_ci(api, comment_id, request, pr):
     if state == "waiting":
         message = (
             f"Waiting for [CI to complete]({run['html_url']}) "
-            f"before reviewing `{request['head_sha']}`."
+            f"before reviewing {request['head_sha'][:7]}."
         )
         request["waiting_message"] = message
     elif state == "ready":

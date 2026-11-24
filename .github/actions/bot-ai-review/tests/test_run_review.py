@@ -92,12 +92,23 @@ class TestRunReview(unittest.TestCase):
         effort="",
         metadata=None,
         ci_results=False,
+        auth=None,
+        grep_script=None,
+        model="provider/model",
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = directory.name
         for name in ("bin", "pr", "data", "shared-guidance"):
             os.mkdir(os.path.join(root, name))
+        if auth is not None:
+            auth_dir = os.path.join(root, "opencode-data", "opencode")
+            os.makedirs(auth_dir)
+            with open(os.path.join(auth_dir, "auth.json"), "w") as f:
+                if isinstance(auth, str):
+                    f.write(auth)
+                else:
+                    json.dump({model.split("/")[0]: auth}, f)
         files = ["pr.diff", "context.json", "history.json"]
         if guidance:
             files.append("guidance.md")
@@ -122,13 +133,18 @@ class TestRunReview(unittest.TestCase):
                 'exit "$MODEL_STATUS"\n'
             )
         os.chmod(fake, 0o755)
+        if grep_script:
+            grep = os.path.join(root, "bin", "grep")
+            with open(grep, "w") as f:
+                f.write(grep_script)
+            os.chmod(grep, 0o755)
         env = {
             **os.environ,
             "PATH": f"{root}/bin:{os.environ['PATH']}",
             "RUNNER_TEMP": root,
             "PR_DIR": f"{root}/pr",
             "DATA_DIR": f"{root}/data",
-            "MODEL": "provider/model",
+            "MODEL": model,
             "EFFORT": effort,
             "MODEL_METADATA": metadata or 'provider/model\n{"variants":{"xhigh":{}}}',
             "STAGE": "final-review",
@@ -143,3 +159,84 @@ class TestRunReview(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         with open(os.path.join(root, "args")) as f:
             self.assertIn(f"{root}/data/ci-results.json", f.read().splitlines())
+
+    def test_failed_model_run_logs_error_event(self):
+        event = {
+            "type": "error",
+            "error": {"data": {"message": "Provider unavailable"}},
+        }
+        root, result = self.run_review(event, status=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"Error: Provider unavailable", result.stdout)
+        self.assertFalse(os.path.exists(os.path.join(root, "findings.json")))
+
+    def test_failed_model_run_does_not_log_access_token(self):
+        event = {"type": "error", "error": {"data": {"message": "access-secret"}}}
+        _, result = self.run_review(
+            event,
+            status=1,
+            auth={"refresh": "refresh-secret", "access": "access-secret"},
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"The model output contains a credential", result.stdout)
+        self.assertNotIn(b"access-secret", result.stdout)
+
+    def test_malformed_auth_stops_before_logging_model_output(self):
+        event = {"type": "error", "error": {"data": {"message": "secret-value"}}}
+        root, result = self.run_review(event, status=1, auth='{"access":"secret-value"')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(b"secret-value", result.stdout)
+        self.assertIn(b"Could not check model output for credentials", result.stdout)
+        self.assertFalse(os.path.exists(f"{root}/opencode-data/opencode/auth.json"))
+
+    def test_credential_scan_does_not_put_token_in_arguments(self):
+        event = {"type": "error", "error": {"data": {"message": "access-secret"}}}
+        root, result = self.run_review(
+            event,
+            status=1,
+            auth={"access": "access-secret"},
+            grep_script='#!/bin/sh\nprintf "%s\\n" "$@" >"$RUNNER_TEMP/grep-args"\nexec /usr/bin/grep "$@"\n',
+        )
+        self.assertIn(b"The model output contains a credential", result.stdout)
+        with open(os.path.join(root, "grep-args")) as f:
+            self.assertNotIn("access-secret", f.read())
+
+    def test_credential_scan_error_stops_before_logging_model_output(self):
+        event = {"type": "error", "error": {"data": {"message": "provider message"}}}
+        _, result = self.run_review(
+            event,
+            status=1,
+            auth={"access": "access-secret"},
+            grep_script="#!/bin/sh\nexit 2\n",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"Could not check model output for credentials", result.stdout)
+        self.assertNotIn(b"provider message", result.stdout)
+
+    def test_nonmatching_credentials_allow_failed_run_diagnostics(self):
+        event = {
+            "type": "error",
+            "error": {"data": {"message": "Provider unavailable"}},
+        }
+        _, result = self.run_review(
+            event,
+            status=1,
+            auth={"refresh": "refresh-secret", "access": "access-secret"},
+            model="github-copilot/model",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"Error: Provider unavailable", result.stdout)
+        self.assertIn(b"The model run did not complete", result.stdout)
+
+    def test_missing_copilot_credentials_stop_before_logging(self):
+        event = {"type": "error", "error": {"data": {"message": "secret-value"}}}
+        for auth in (None, "", "   ", "{}", '{"other": {"access": "other-token"}}'):
+            with self.subTest(auth=auth):
+                _, result = self.run_review(
+                    event, status=1, auth=auth, model="github-copilot/model"
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(
+                    b"Could not check model output for credentials", result.stdout
+                )
+                self.assertNotIn(b"secret-value", result.stdout)

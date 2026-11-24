@@ -352,24 +352,29 @@ jobs:
         if: steps.comments.outputs.present == 'true'
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/install_crit.sh
 
+      - name: Fetch pull request for publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ""
+          GIT_CONFIG_KEY_1: credential.helper
+          GIT_CONFIG_VALUE_1: "!gh auth git-credential"
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
+
       - name: Generate write app token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.PRIVATE_KEY }}
-          permission-contents: read
           permission-pull-requests: write
 
       - name: Publish review
         id: publish
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          GIT_CONFIG_COUNT: "2"
-          GIT_CONFIG_KEY_0: credential.helper
-          GIT_CONFIG_VALUE_0: ""
-          GIT_CONFIG_KEY_1: credential.helper
-          GIT_CONFIG_VALUE_1: "!gh auth git-credential"
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
           MODEL: ${{ needs.gate.outputs.model }}

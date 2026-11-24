@@ -15,7 +15,7 @@ def test_private_git_auth_is_limited_to_fetch_steps(tmp_path):
     publish = jobs["publish"]["steps"]
     for steps, name, token in (
         (review, "Fetch pull request as data", "${{ github.token }}"),
-        (publish, "Publish review", "${{ steps.app-token.outputs.token }}"),
+        (publish, "Fetch pull request for publication", "${{ github.token }}"),
     ):
         step = next(step for step in steps if step["name"] == name)
         env = step["env"]
@@ -55,7 +55,14 @@ def test_private_git_auth_is_limited_to_fetch_steps(tmp_path):
     write_token = next(
         step for step in publish if step["name"] == "Generate write app token"
     )
-    assert write_token["with"]["permission-contents"] == "read"
+    assert "permission-contents" not in write_token["with"]
+    fetch = next(
+        step for step in publish if step["name"] == "Fetch pull request for publication"
+    )
+    assert fetch["run"] == 'git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"'
+    publish_step = next(step for step in publish if step["name"] == "Publish review")
+    assert publish_step["env"]["GH_TOKEN"] == "${{ steps.app-token.outputs.token }}"
+    assert not any(key.startswith("GIT_CONFIG_") for key in publish_step["env"])
     assert (
         next(step for step in review if step["name"] == "Run review")["env"].get(
             "GH_TOKEN"

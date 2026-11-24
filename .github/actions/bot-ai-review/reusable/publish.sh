@@ -2,7 +2,6 @@
 # Publish review findings and dismiss superseded reviews of the same stage.
 set -euo pipefail
 
-git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
 git checkout -B "ai-review-$PR_NUMBER" "$HEAD_SHA"
 
 EVENT=$(jq -er '.event' "$FINDINGS")

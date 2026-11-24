@@ -51,18 +51,35 @@ if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
 fi
 
 AUTH="$XDG_DATA_HOME/opencode/auth.json"
-if [ -f "$AUTH" ]; then
-  TOKEN=$(jq -r '.[].refresh' "$AUTH")
+# Copilot is configured with an auth file. Without its token, diagnostics cannot be scanned safely.
+if [[ "$MODEL" == github-copilot/* ]] && \
+  ! jq -e '[."github-copilot" | .refresh, .access | select(type == "string" and length > 0)] | length > 0' \
+    "$AUTH" >/dev/null 2>&1; then
   rm -f "$AUTH"
-  if grep -qF -- "$TOKEN" "$EVENTS"; then
-    echo "::error::The model output contains a credential"
+  echo "::error::Could not check model output for credentials"
+  exit 1
+fi
+if [ -f "$AUTH" ]; then
+  if ! TOKENS=$(jq -r '.[] | .refresh, .access | select(type == "string" and length > 0)' \
+    "$AUTH" 2>/dev/null); then
+    rm -f "$AUTH"
+    echo "::error::Could not check model output for credentials"
     exit 1
   fi
-fi
-
-if [ "$STATUS" -ne 0 ]; then
-  echo "::error::The model run did not complete (exit status: $STATUS)"
-  exit 1
+  rm -f "$AUTH"
+  if [ -n "$TOKENS" ]; then
+    # Pass tokens through stdin so sandbox processes cannot read them in the process list.
+    if printf '%s\n' "$TOKENS" | grep -qF -f - "$EVENTS"; then
+      echo "::error::The model output contains a credential"
+      exit 1
+    else
+      SCAN_STATUS=$?
+      if [ "$SCAN_STATUS" -ne 1 ]; then
+        echo "::error::Could not check model output for credentials"
+        exit 1
+      fi
+    fi
+  fi
 fi
 
 # Disable GitHub workflow commands while printing untrusted model output and tool logs.
@@ -75,6 +92,10 @@ jq -r 'select(.type == "step_finish") | .part
   | "Step: \(.reason), output tokens: \(.tokens.output), reasoning tokens: \(.tokens.reasoning)"' \
   "$EVENTS" || true
 echo "::$STOP::"
+if [ "$STATUS" -ne 0 ]; then
+  echo "::error::The model run did not complete (exit status: $STATUS)"
+  exit 1
+fi
 # Earlier text events can be progress updates. Use the last text event as the answer.
 jq -rs '[.[] | select(.type == "text") | .part.text] | last // ""' "$EVENTS" >"$OUTPUT"
 if ! [ -s "$OUTPUT" ] || ! grep -q '[^[:space:]]' "$OUTPUT"; then

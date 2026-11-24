@@ -94,20 +94,21 @@ class TestRunReview(unittest.TestCase):
         ci_results=False,
         auth=None,
         grep_script=None,
+        model="provider/model",
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = directory.name
         for name in ("bin", "pr", "data", "shared-guidance"):
             os.mkdir(os.path.join(root, name))
-        if auth:
+        if auth is not None:
             auth_dir = os.path.join(root, "opencode-data", "opencode")
             os.makedirs(auth_dir)
             with open(os.path.join(auth_dir, "auth.json"), "w") as f:
                 if isinstance(auth, str):
                     f.write(auth)
                 else:
-                    json.dump({"provider": auth}, f)
+                    json.dump({model.split("/")[0]: auth}, f)
         files = ["pr.diff", "context.json", "history.json"]
         if guidance:
             files.append("guidance.md")
@@ -143,7 +144,7 @@ class TestRunReview(unittest.TestCase):
             "RUNNER_TEMP": root,
             "PR_DIR": f"{root}/pr",
             "DATA_DIR": f"{root}/data",
-            "MODEL": "provider/model",
+            "MODEL": model,
             "EFFORT": effort,
             "MODEL_METADATA": metadata or 'provider/model\n{"variants":{"xhigh":{}}}',
             "STAGE": "final-review",
@@ -211,3 +212,31 @@ class TestRunReview(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"Could not check model output for credentials", result.stdout)
         self.assertNotIn(b"provider message", result.stdout)
+
+    def test_nonmatching_credentials_allow_failed_run_diagnostics(self):
+        event = {
+            "type": "error",
+            "error": {"data": {"message": "Provider unavailable"}},
+        }
+        _, result = self.run_review(
+            event,
+            status=1,
+            auth={"refresh": "refresh-secret", "access": "access-secret"},
+            model="github-copilot/model",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"Error: Provider unavailable", result.stdout)
+        self.assertIn(b"The model run did not complete", result.stdout)
+
+    def test_missing_copilot_credentials_stop_before_logging(self):
+        event = {"type": "error", "error": {"data": {"message": "secret-value"}}}
+        for auth in (None, "", "   ", "{}", '{"other": {"access": "other-token"}}'):
+            with self.subTest(auth=auth):
+                _, result = self.run_review(
+                    event, status=1, auth=auth, model="github-copilot/model"
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(
+                    b"Could not check model output for credentials", result.stdout
+                )
+                self.assertNotIn(b"secret-value", result.stdout)

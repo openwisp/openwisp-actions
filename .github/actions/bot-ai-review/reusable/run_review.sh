@@ -51,6 +51,14 @@ if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
 fi
 
 AUTH="$XDG_DATA_HOME/opencode/auth.json"
+# Copilot is configured with an auth file. Without its token, diagnostics cannot be scanned safely.
+if [[ "$MODEL" == github-copilot/* ]] && \
+  ! jq -e '[."github-copilot" | .refresh, .access | select(type == "string" and length > 0)] | length > 0' \
+    "$AUTH" >/dev/null 2>&1; then
+  rm -f "$AUTH"
+  echo "::error::Could not check model output for credentials"
+  exit 1
+fi
 if [ -f "$AUTH" ]; then
   if ! TOKENS=$(jq -r '.[] | .refresh, .access | select(type == "string" and length > 0)' \
     "$AUTH" 2>/dev/null); then

@@ -1,16 +1,18 @@
 """Print the review's tool calls while it runs.
 
-The events of one file are read from standard input as they are written:
-commands when they start, recorded by the sandbox shell, or tool calls when
-they end, reported by OpenCode. The job log then shows the last command even
-if the runner is lost while it runs.
+Follow the events files until the review process ends: commands when they
+start, recorded by the sandbox shell, and tool calls when they end, reported
+by OpenCode. The job log then shows the last command even if the runner is
+lost while it runs.
 Lines are checked for the provider's credentials like the output of a
 finished review: a line is hidden when it contains one, or when the
 credentials cannot be read.
 """
 
 import json
+import os
 import sys
+import time
 
 
 def read_credentials(path, model):
@@ -52,31 +54,57 @@ def describe(event):
     return f"Tool: {part.get('tool')} ({state.get('status')}) {target}"
 
 
+def running(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def show(line, tokens, known):
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(event, dict) or event.get("type") not in (
+        "tool_start",
+        "tool_use",
+    ):
+        return None
+    # A refresh can leave the file briefly incomplete: hide only this line then.
+    if tokens is None:
+        return "Tool call hidden: the credentials could not be read"
+    text = describe(event)
+    if any(token in text for token in known):
+        return "Tool call hidden: it contains a credential"
+    return text
+
+
 def main():
-    auth, model, initial = sys.argv[1:4]
+    auth, model, initial, pid, *paths = sys.argv[1:]
     # The credentials before the review started, which a refresh may replace.
     known = read_credentials(initial, model) or set()
-    for line in sys.stdin:
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(event, dict) or event.get("type") not in (
-            "tool_start",
-            "tool_use",
-        ):
-            continue
-        # A token can be refreshed during the review, so read the file again. A
-        # refresh can also leave it briefly incomplete: hide only this line then.
+    files = [open(path, "rb") for path in paths]
+    # Process only complete lines, which OpenCode may write in parts.
+    partial = [b""] * len(files)
+    while True:
+        # Check before the last read, so events written before the end are printed.
+        ended = not running(int(pid))
+        # OpenCode can replace a token at any time. Read the file between events
+        # too, so a token replaced before the next event is still known.
         tokens = read_credentials(auth, model)
-        if tokens is None:
-            text = "Tool call hidden: the credentials could not be read"
-        else:
+        if tokens is not None:
             known |= tokens
-            text = describe(event)
-            if any(token in text for token in known):
-                text = "Tool call hidden: it contains a credential"
-        print(text, flush=True)
+        for index, f in enumerate(files):
+            *lines, partial[index] = (partial[index] + f.read()).split(b"\n")
+            for line in lines:
+                text = show(line, tokens, known)
+                if text is not None:
+                    print(text, flush=True)
+        if ended:
+            break
+        time.sleep(0.2)
 
 
 if __name__ == "__main__":

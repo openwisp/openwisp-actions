@@ -61,18 +61,13 @@ REVIEW=$!
 # the events are lost with it. Disable workflow commands while printing model output.
 STOP=$(openssl rand -hex 16)
 echo "::stop-commands::$STOP"
-# Follow each file separately: a line still being written to one file must not be
-# split by a line from the other.
-tail -n +1 -f --pid="$REVIEW" "$EVENTS" |
-  python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" "$INITIAL_AUTH" &
-EVENTS_PROGRESS=$!
-tail -n +1 -f --pid="$REVIEW" "$AI_REVIEW_STARTS" |
-  python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" "$INITIAL_AUTH" &
-STARTS_PROGRESS=$!
+python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" "$INITIAL_AUTH" "$REVIEW" \
+  "$EVENTS" "$AI_REVIEW_STARTS" &
+PROGRESS=$!
 bash "$DIR/monitor_resources.sh" "$REVIEW" 60 &
 MONITOR=$!
 wait "$REVIEW" || STATUS=$?
-wait "$EVENTS_PROGRESS" "$STARTS_PROGRESS" "$MONITOR" || true
+wait "$PROGRESS" "$MONITOR" || true
 rm -f "$INITIAL_AUTH"
 echo "::$STOP::"
 if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then

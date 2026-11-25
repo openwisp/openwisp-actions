@@ -99,6 +99,7 @@ class TestRunReview(unittest.TestCase):
         start_event=None,
         split_event=False,
         rotated_auth=None,
+        refreshed_auth=None,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -147,6 +148,11 @@ class TestRunReview(unittest.TestCase):
                 'if [ -n "${START_EVENT:-}" ]; then\n'
                 '  printf \'%s\\n\' "$START_EVENT" >>"$AI_REVIEW_STARTS"\n'
                 "fi\n"
+                # Stand in for OpenCode replacing the token again before the next event.
+                'if [ -n "${REFRESHED_AUTH:-}" ]; then\n'
+                "  sleep 1\n"
+                '  printf \'%s\' "$REFRESHED_AUTH" >"$XDG_DATA_HOME/opencode/auth.json"\n'
+                "fi\n"
                 'if [ -n "${SPLIT_EVENT:-}" ]; then\n'
                 "  sleep 1.5\n"
                 '  printf \'%s\' "$EVENT" | cut -c "$((half + 1))-"\n'
@@ -183,6 +189,7 @@ class TestRunReview(unittest.TestCase):
             "START_EVENT": json.dumps(start_event) if start_event else "",
             "SPLIT_EVENT": "1" if split_event else "",
             "ROTATED_AUTH": json.dumps(rotated_auth) if rotated_auth else "",
+            "REFRESHED_AUTH": json.dumps(refreshed_auth) if refreshed_auth else "",
         }
         if wait_file:
             process = subprocess.Popen(
@@ -316,6 +323,29 @@ class TestRunReview(unittest.TestCase):
             rotated_auth={"provider": {"access": "new-secret"}},
         )
         self.assertNotIn(b"old-secret", result.stdout)
+        self.assertIn(b"Tool call hidden: it contains a credential", result.stdout)
+
+    def test_token_replaced_between_events_is_hidden(self):
+        event = {
+            "type": "tool_use",
+            "part": {
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "input": {"command": "echo second-secret"},
+                },
+            },
+        }
+        start = {"type": "tool_start", "args": ["-c", "./runtests"]}
+        _, result = self.run_review(
+            event,
+            auth={"access": "first-secret"},
+            rotated_auth={"provider": {"access": "second-secret"}},
+            start_event=start,
+            refreshed_auth={"provider": {"access": "third-secret"}},
+        )
+        self.assertIn(b"Started: ./runtests", result.stdout)
+        self.assertNotIn(b"second-secret", result.stdout)
         self.assertIn(b"Tool call hidden: it contains a credential", result.stdout)
 
     def test_tool_calls_are_not_printed_without_copilot_credentials(self):

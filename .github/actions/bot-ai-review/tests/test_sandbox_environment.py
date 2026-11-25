@@ -94,3 +94,60 @@ def test_pip_configuration_allows_virtualenv_installation(tmp_path):
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_review_commands_use_installer_virtualenv(tmp_path):
+    home = tmp_path / "reviewer"
+    run = tmp_path / "run"
+    pr = tmp_path / "pr"
+    for directory in (home, run, pr):
+        directory.mkdir()
+    venv = run / ".venv"
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--without-pip", str(venv)],
+        check=True,
+        capture_output=True,
+    )
+    modules = (
+        venv
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    (modules / "review_venv_probe.py").write_text("VALUE = 'installed'\n")
+    sync = tmp_path / "sync"
+    sync.write_text("#!/bin/sh\nexit 0\n")
+    sync.chmod(0o755)
+    sudo = tmp_path / "sudo"
+    sudo.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "args = sys.argv[sys.argv.index('/usr/bin/env'):]\n"
+        "args = [arg.replace('/home/reviewer', os.environ['TEST_HOME'])"
+        ".replace('/tmp/ai-review/run', os.environ['TEST_RUN'])"
+        ".replace('/tmp/ai-review/pr', os.environ['TEST_PR'])"
+        ".replace('/usr/local/bin/ai-review-sync', os.environ['TEST_SYNC']) for arg in args]\n"
+        "os.execv(args[0], args)\n"
+    )
+    sudo.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{tmp_path}:{os.environ['PATH']}",
+        "TEST_HOME": str(home),
+        "TEST_RUN": str(run),
+        "TEST_PR": str(pr),
+        "TEST_SYNC": str(sync),
+    }
+    result = subprocess.run(
+        [
+            str(SCRIPT),
+            "-c",
+            "python -c 'import review_venv_probe; print(review_venv_probe.VALUE)'",
+        ],
+        cwd=pr,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "installed"

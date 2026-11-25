@@ -9,6 +9,10 @@ exec sudo -n -H -u reviewer -- /usr/bin/env -i HOME=/home/reviewer USER=reviewer
   "SE_CHROME=${SE_CHROME:-}" "SE_CHROMEDRIVER=${SE_CHROMEDRIVER:-}" \
   "CHROME_BIN=${SE_CHROME:-}" "GECKO_BIN=${GECKO_BIN:-}" SELENIUM_HEADLESS=1 /bin/bash -c '
 /usr/local/bin/ai-review-sync /tmp/ai-review/pr /tmp/ai-review/run "$HOME/.ai-review-files" || exit 1
+if [ -x /tmp/ai-review/run/.venv/bin/python ]; then
+  export VIRTUAL_ENV=/tmp/ai-review/run/.venv
+  export PATH="$VIRTUAL_ENV/bin:$PATH"
+fi
 case "$PWD/" in
   /tmp/ai-review/pr/*) cd "/tmp/ai-review/run${PWD#/tmp/ai-review/pr}" || exit 1 ;;
 esac

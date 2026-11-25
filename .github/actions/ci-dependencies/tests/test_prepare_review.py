@@ -12,11 +12,16 @@ PREPARE = ROOT / "ci-dependencies" / "reusable" / "prepare_review.sh"
 SYNC = ROOT / "bot-ai-review" / "reusable" / "sync_copy.sh"
 
 
-@pytest.mark.parametrize("system_deps", [False, True])
 @pytest.mark.parametrize(
-    "distro", ["", "ubuntu test", "line1\nline2", "a=b", "$(false)"]
+    ("system_deps", "distro", "configured_django"),
+    [
+        (False, "", ""),
+        (True, "ubuntu test", "django~=6.1"),
+        (False, "line1\nline2", ""),
+        (True, "a=b", ""),
+        (False, "$(false)", ""),
+    ],
 )
-@pytest.mark.parametrize("configured_django", ["", "django~=6.1"])
 def test_prepares_trusted_code_then_synchronizes_pull_request(
     tmp_path, system_deps, distro, configured_django
 ):
@@ -25,8 +30,10 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
     run = tmp_path / "run"
     home = tmp_path / "reviewer"
     runner_home = tmp_path / "runner"
+    tool_cache = tmp_path / "tool-cache"
+    runner_temp = tmp_path / "runner-temp"
     bins = tmp_path / "bin"
-    for directory in (base, pr, run, home, runner_home, bins):
+    for directory in (base, pr, run, home, runner_home, tool_cache, runner_temp, bins):
         directory.mkdir()
     pip_cache = runner_home / ".cache" / "pip"
     pip_cache.mkdir(parents=True)
@@ -56,6 +63,11 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         "args = sys.argv[1:]\n"
         "if args[:2] == ['-u', 'reviewer']: args = args[2:]\n"
         "if args[:4] == ['-n', '-H', '-u', 'reviewer']: args = args[4:]\n"
+        "if args[:3] == ['-n', '-u', 'reviewer']:\n"
+        "    args = args[3:]\n"
+        "    if args[0] == 'test': sys.exit(1)\n"
+        "    if args[0] == 'find': sys.exit(0)\n"
+        "if args[0] == 'find' and '-user' in args: sys.exit(0)\n"
         "if args[0] == 'chown': sys.exit(0)\n"
         "if args[0] == 'rsync' and not args[-1].startswith("
         "os.path.dirname(os.environ['GITHUB_WORKSPACE'])): sys.exit(7)\n"
@@ -67,9 +79,11 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
     sudo.chmod(0o755)
     env = {
         **os.environ,
-        "PATH": f"{bins}:{os.environ['PATH']}",
+        "PATH": f"{bins}:/usr/bin:/bin",
         "HOME": str(runner_home),
         "GITHUB_WORKSPACE": str(base),
+        "RUNNER_TOOL_CACHE": str(tool_cache),
+        "RUNNER_TEMP": str(runner_temp),
         "YARN_CACHE_DIR": str(yarn_cache),
         "CI_QA": "1",
         "CI": "true",

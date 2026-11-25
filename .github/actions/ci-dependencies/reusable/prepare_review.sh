@@ -4,6 +4,7 @@ set -euo pipefail
 
 RUN=${1:-/tmp/ai-review/run}
 REVIEW_HOME=${2:-/home/reviewer}
+DIR=$(dirname "$(realpath "$0")")
 INSTALLER_ENV=$(jq -ce 'if type == "object" and all(to_entries[];
   (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and
   (.value | type == "string" and (contains("\u0000") | not)))
@@ -41,6 +42,8 @@ if [ -d "$HOME/.cache/ci-deps" ]; then
   sudo cp -a "$HOME/.cache/ci-deps" "$REVIEW_HOME/.cache/"
   sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache/ci-deps"
 fi
+# The system phase may have changed runner files. Protect them before reviewer code runs.
+bash "$DIR/protect_toolchain.sh"
 cd "$RUN"
 sudo -n -H -u reviewer env -i "${MATRIX_ENV[@]}" HOME="$REVIEW_HOME" USER=reviewer LOGNAME=reviewer CI=true \
   PATH="$PATH" DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \

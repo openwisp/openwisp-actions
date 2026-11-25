@@ -401,6 +401,10 @@ jobs:
           django-version: ${{ steps.ci.outputs.django_version }}
           variant: ${{ steps.ci.outputs.extra_cache_variant }}
 
+      - name: Install OpenCode
+        # The exact OpenCode release is pinned.
+        run: npm install -g opencode-ai@1.18.35 # zizmor: ignore[adhoc-packages]
+
       - name: Install trusted CI dependencies
         if: steps.ci.outcome == 'success'
         env:
@@ -410,10 +414,6 @@ jobs:
           SYSTEM_DEPS_ENABLED: ${{ steps.ci.outputs.system_deps }}
           INSTALLER_ENV: ${{ steps.ci.outputs.installer_env }}
         run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/prepare_review.sh
-
-      - name: Install OpenCode
-        # The exact OpenCode release is pinned.
-        run: npm install -g opencode-ai@1.18.35 # zizmor: ignore[adhoc-packages]
 
       - name: Configure provider credentials
         if: vars.OPENCODE_PROVIDER == 'github-copilot'

@@ -95,6 +95,7 @@ class TestRunReview(unittest.TestCase):
         auth=None,
         grep_script=None,
         model="provider/model",
+        wait_file=None,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -130,6 +131,12 @@ class TestRunReview(unittest.TestCase):
                 "fi\n"
                 'printf \'%s\\n\' "$@" >"$RUNNER_TEMP/args"\n'
                 "printf '%s\\n' \"$EVENT\"\n"
+                # Give up after 30 seconds, so a missing tool call fails the test.
+                "i=0\n"
+                'while [ -n "${WAIT_FILE:-}" ] && [ ! -e "$WAIT_FILE" ] && [ "$i" -lt 300 ]; do\n'
+                "  sleep 0.1; i=$((i + 1))\n"
+                "done\n"
+                'touch "$RUNNER_TEMP/model-finished"\n'
                 'exit "$MODEL_STATUS"\n'
             )
         os.chmod(fake, 0o755)
@@ -150,8 +157,97 @@ class TestRunReview(unittest.TestCase):
             "STAGE": "final-review",
             "EVENT": json.dumps(event),
             "MODEL_STATUS": str(status),
+            "WAIT_FILE": wait_file or "",
         }
+        if wait_file:
+            process = subprocess.Popen(
+                ["bash", SCRIPT],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.addCleanup(process.wait)
+            self.addCleanup(process.stderr.close)
+            self.addCleanup(process.stdout.close)
+            return root, process
         return root, subprocess.run(["bash", SCRIPT], env=env, capture_output=True)
+
+    TOOL_EVENT = {
+        "type": "tool_use",
+        "part": {
+            "tool": "bash",
+            "state": {"status": "completed", "input": {"command": "./runtests"}},
+        },
+    }
+
+    def test_tool_calls_are_printed_while_the_review_runs(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        wait_file = os.path.join(directory.name, "finish")
+        root, process = self.run_review(self.TOOL_EVENT, wait_file=wait_file)
+        for line in process.stdout:
+            if line == b"Tool: bash (completed) ./runtests\n":
+                break
+        else:
+            self.fail("The tool call was not printed")
+        self.assertFalse(
+            os.path.exists(os.path.join(root, "model-finished")),
+            "The tool call was printed only after the model run ended",
+        )
+        open(wait_file, "w").close()
+        output = process.stdout.read()
+        self.assertEqual(process.wait(timeout=30), 1)
+        self.assertNotIn(b"Tool: bash", output, "The tool call was printed twice")
+
+    def test_tool_calls_are_printed_with_workflow_commands_disabled(self):
+        _, result = self.run_review(self.TOOL_EVENT)
+        lines = result.stdout.decode().splitlines()
+        tool = lines.index("Tool: bash (completed) ./runtests")
+        start = max(
+            index
+            for index, line in enumerate(lines[:tool])
+            if line.startswith("::stop-commands::")
+        )
+        token = lines[start].removeprefix("::stop-commands::")
+        self.assertIn(f"::{token}::", lines[tool:])
+
+    def test_tool_call_containing_a_credential_is_hidden(self):
+        event = {
+            "type": "tool_use",
+            "part": {
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "input": {"command": "echo access-secret"},
+                },
+            },
+        }
+        _, result = self.run_review(event, auth={"access": "access-secret"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(b"access-secret", result.stdout)
+        self.assertIn(b"Tool call hidden: it contains a credential", result.stdout)
+        self.assertIn(b"The model output contains a credential", result.stdout)
+
+    def test_tool_calls_are_not_printed_without_copilot_credentials(self):
+        _, result = self.run_review(self.TOOL_EVENT, model="github-copilot/model")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(b"./runtests", result.stdout)
+        self.assertIn(
+            b"Tool calls are not shown: the credentials could not be read",
+            result.stdout,
+        )
+
+    def test_resource_usage_is_printed_before_the_review(self):
+        _, result = self.run_review(self.TOOL_EVENT)
+        lines = result.stdout.decode().splitlines()
+        resources = [
+            index for index, line in enumerate(lines) if line.startswith("Resources: ")
+        ]
+        self.assertTrue(resources, "The resource usage was not printed")
+        self.assertRegex(
+            lines[resources[0]],
+            r"^Resources: memory \d+/\d+ MiB used, disk \d+ MiB free, \d+ processes$",
+        )
 
     def test_ci_results_are_attached_when_available(self):
         event = {"type": "text", "part": {"text": "not JSON"}}

@@ -43,14 +43,27 @@ fi
 REVIEW_MINUTES=50
 PROMPT=$("$DIR/build_prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
   "$RUNNER_TEMP/shared-guidance/guidance.md")
+AUTH="$XDG_DATA_HOME/opencode/auth.json"
 STATUS=0
+: >"$EVENTS"
 timeout --kill-after=30s "${REVIEW_MINUTES}m" opencode run "$PROMPT" --pure --format json \
-  --model "$MODEL" --dir "$PR_DIR" "${VARIANT[@]}" "${FILES[@]}" </dev/null >"$EVENTS" || STATUS=$?
+  --model "$MODEL" --dir "$PR_DIR" "${VARIANT[@]}" "${FILES[@]}" </dev/null >"$EVENTS" &
+REVIEW=$!
+# Print tool calls and resource usage while the review runs: if the runner is lost,
+# the events are lost with it. Disable workflow commands while printing model output.
+STOP=$(openssl rand -hex 16)
+echo "::stop-commands::$STOP"
+tail -n +1 -f --pid="$REVIEW" "$EVENTS" | python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" &
+PROGRESS=$!
+bash "$DIR/monitor_resources.sh" "$REVIEW" 60 &
+MONITOR=$!
+wait "$REVIEW" || STATUS=$?
+wait "$PROGRESS" "$MONITOR" || true
+echo "::$STOP::"
 if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
   echo "::warning::The review hit the $REVIEW_MINUTES-minute limit"
 fi
 
-AUTH="$XDG_DATA_HOME/opencode/auth.json"
 # Copilot is configured with an auth file. Without its token, diagnostics cannot be scanned safely.
 if [[ "$MODEL" == github-copilot/* ]] && \
   ! jq -e '[."github-copilot" | .refresh, .access | select(type == "string" and length > 0)] | length > 0' \
@@ -82,12 +95,9 @@ if [ -f "$AUTH" ]; then
   fi
 fi
 
-# Disable GitHub workflow commands while printing untrusted model output and tool logs.
-STOP=$(openssl rand -hex 16)
+# Disable GitHub workflow commands while printing untrusted model output.
 echo "::stop-commands::$STOP"
 jq -r 'select(.type == "error") | "Error: \(.error.data.message // .error.name)"' "$EVENTS" || true
-jq -r 'select(.type == "tool_use") | .part |
-  "Tool: \(.tool) (\(.state.status)) \(.state.input.command // .state.input.url // "")"' "$EVENTS" || true
 jq -r 'select(.type == "step_finish") | .part
   | "Step: \(.reason), output tokens: \(.tokens.output), reasoning tokens: \(.tokens.reasoning)"' \
   "$EVENTS" || true

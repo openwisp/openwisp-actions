@@ -1,4 +1,35 @@
-#!/usr/bin/env bash
-# Run action tests and the custom inline-script check tests.
+#!/usr/bin/env python3
+"""Run action and QA tests, optionally selecting individual test files."""
 
-python -m pytest .github/actions/*/tests qa/test_lean_yaml.py -q
+import os
+import sys
+from pathlib import Path
+
+from openwisp_utils.test.runner import (
+    InvalidTestArgument,
+    compile_test_file_pattern,
+    parse_test_files,
+)
+
+
+def main():
+    action_tests = sorted(
+        str(path / "tests")
+        for path in Path(".github/actions").iterdir()
+        if (path / "tests").is_dir()
+    )
+    pattern = compile_test_file_pattern(("qa", *action_tests))
+    try:
+        files, flags = parse_test_files(sys.argv[1:], pattern, ("-q", "-v", "-x"))
+    except InvalidTestArgument as error:
+        print(error, file=sys.stderr)
+        return 2
+    if files:
+        targets = [match.group(0) for match in files]
+    else:
+        targets = [*action_tests, "qa/test_lean_yaml.py", "qa/test_runtests.py"]
+    os.execvp("python", ["python", "-m", "pytest", *targets, *(flags or ["-q"])])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

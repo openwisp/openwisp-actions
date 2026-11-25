@@ -617,6 +617,10 @@ flock, OpenSSL, and Prettier available:
     ./run-qa-checks
     ./runtests
 
+For a focused run, pass a test file such as
+``.github/actions/ci-dependencies/tests/test_detect_ci.py`` to
+``./runtests``.
+
 Run ``./qa-format`` to apply the shared OpenWISP formatting before QA.
 
 Contributing

@@ -51,8 +51,10 @@ for path in "${path_entries[@]}"; do
   case "$path" in /*) ;; *) echo "::error::Unsafe PATH entry" >&2; exit 1 ;; esac
   [ -d "$path" ] || continue
   check_parents "$(realpath -e "$path")"
-  if [ -n "$(sudo -n -u reviewer find -L "$path" -maxdepth 1 -writable -print -quit)" ]; then
-    echo "::error::Reviewer-writable PATH entry" >&2
+  writable=$(sudo -n -u reviewer find -L "$path" -maxdepth 1 -writable -print -quit)
+  if [ -n "$writable" ]; then
+    encoded=$(printf '%s' "$writable" | base64 -w0)
+    echo "::error::Reviewer-writable PATH entry (base64): $encoded" >&2
     exit 1
   fi
   case "$(realpath -e "$path")" in

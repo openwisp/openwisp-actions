@@ -22,7 +22,7 @@ for path in "${RUNNER_TOOL_CACHE:?}" "${RUNNER_TEMP:?}" "${GITHUB_WORKSPACE:?}";
     exit 1
   fi
   if sudo -n -u reviewer test -x "$path"; then
-    writable=$(sudo -n -u reviewer find "$path" -writable -print -quit -o \
+    writable=$(sudo -n -u reviewer find "$path" \( ! -type l -writable -print -quit \) -o \
       \( -type d ! -readable -prune \))
     if [ -n "$writable" ]; then
       # Paths are encoded so file names cannot create workflow commands in logs.

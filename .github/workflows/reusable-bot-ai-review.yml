@@ -408,6 +408,7 @@ jobs:
           YARN_CACHE_DIR: ${{ steps.yarn-cache-dir-path.outputs.dir }}
           CI_QA: ${{ steps.node.outcome == 'success' && '1' || '0' }}
           SYSTEM_DEPS_ENABLED: ${{ steps.ci.outputs.system_deps }}
+          INSTALLER_ENV: ${{ steps.ci.outputs.installer_env }}
         run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/prepare_review.sh
 
       - name: Install OpenCode

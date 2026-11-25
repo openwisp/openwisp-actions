@@ -36,6 +36,7 @@ def test_selects_python_and_django_from_workflow(tmp_path):
         "extra_cache_glob=",
         "extra_cache_variant=",
         "system_deps=false",
+        "installer_env={}",
     ]
 
 
@@ -63,6 +64,7 @@ def test_selects_python_from_non_matrix_workflow(tmp_path):
         "extra_cache_glob=",
         "extra_cache_variant=",
         "system_deps=false",
+        "installer_env={}",
     ]
 
 
@@ -332,3 +334,28 @@ def test_rejects_invalid_system_dependency_setting(tmp_path):
     )
     assert result.returncode != 0
     assert "Invalid AI_REVIEW_SYSTEM_DEPS" in result.stderr
+
+
+def test_selects_matrix_environment_for_installer(tmp_path):
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "jobs:\n  test:\n    strategy:\n      matrix:\n"
+        '        distro: ["debian", "ubuntu"]\n'
+        '        include:\n          - distro: "ubuntu"\n'
+        "            review_default: true\n"
+        "    steps:\n      - uses: actions/setup-python@abcdef\n"
+        '        with:\n          python-version: "3.12"\n'
+        "      - id: deps\n        env:\n"
+        '          DISTRO: "${{ matrix.distro }}"\n'
+        '          SECRET: "${{ secrets.TOKEN }}"\n'
+    )
+    output = tmp_path / "output"
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        env={**os.environ, "GITHUB_OUTPUT": str(output), "CI_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert 'installer_env={"DISTRO":"ubuntu"}' in output.read_text().splitlines()

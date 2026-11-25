@@ -64,6 +64,21 @@ if [ -n "$CACHE_GLOB" ] &&
   exit 1
 fi
 CACHE_AXES=$(jq -r '.env.AI_REVIEW_CACHE_AXES // ""' <<<"$JOB")
+# Resolve only direct matrix references, not secrets or arbitrary expressions.
+INSTALLER_ENV=$(jq -ce --argjson row "$ROW" '
+  ((.env // {}) + ([.steps[]? | select(.id == "deps") | .env // {}] | first // {}))
+  | to_entries
+  | map(select((.value | type) == "string" and
+      (.value | test("^\\$\\{\\{\\s*matrix\\.[A-Za-z0-9_-]+\\s*\\}\\}$"))))
+  | map(. as $entry |
+      ($entry.value | capture("matrix\\.(?<axis>[A-Za-z0-9_-]+)").axis) as $axis |
+      if ($entry.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and ($row | has($axis)) and
+         (($row[$axis] | type) == "string" or ($row[$axis] | type) == "number" or
+          ($row[$axis] | type) == "boolean") and
+         (($row[$axis] | tostring | contains("\u0000")) | not)
+      then {key: $entry.key, value: ($row[$axis] | tostring)}
+      else error("invalid matrix environment") end)
+  | from_entries' <<<"$JOB")
 SYSTEM_DEPS=$(jq -r '.env.AI_REVIEW_SYSTEM_DEPS // false' <<<"$JOB")
 case "$SYSTEM_DEPS" in
   true|false) ;;
@@ -92,4 +107,5 @@ fi
   echo "extra_cache_glob=$CACHE_GLOB"
   echo "extra_cache_variant=$CACHE_VARIANT"
   echo "system_deps=$SYSTEM_DEPS"
+  echo "installer_env=$INSTALLER_ENV"
 } >> "$GITHUB_OUTPUT"

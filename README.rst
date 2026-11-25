@@ -542,7 +542,9 @@ mark one row with ``review_default: true``. Declare required browsers with
 ``AI_REVIEW_BROWSERS``. See the `review workflow
 <.github/workflows/reusable-bot-ai-review.yml>`_ and `CI cache action
 <.github/actions/ci-cache/action.yml>`_ for the supported settings.
-Without standardized CI, reviews continue without dependency setup.
+Without standardized CI, reviews continue without dependency setup. The
+installer receives ``CI=true`` and direct matrix references in the test
+job and dependency step environment. Other expressions are not evaluated.
 
 For privileged host dependencies, set ``AI_REVIEW_SYSTEM_DEPS: "true"`` in
 the test job environment and follow the `installer phase contract

@@ -34,10 +34,11 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
     (base / "deleted.py").write_text("delete me")
     (base / "install-ci-deps.sh").write_text(
         '#!/bin/bash\nif [ "${CI_SYSTEM_DEPS_ONLY:-0}" = 1 ]; then\n'
-        '  printf "%s:%s" "$(cat feature.py)" "${SECRET_SENTINEL-unset}" > system.txt\n'
-        'else\n  printf "%s:%s:%s:%s" "$(cat feature.py)" '
+        '  printf "%s:%s:%s:%s" "$(cat feature.py)" "${SECRET_SENTINEL-unset}" '
+        '"${CI-unset}" "${DISTRO-unset}" > system.txt\n'
+        'else\n  printf "%s:%s:%s:%s:%s:%s" "$(cat feature.py)" '
         '"${SECRET_SENTINEL-unset}" "${CI_QA-unset}" '
-        '"${CI_SYSTEM_DEPS_READY:-0}" > installed.txt\nfi\n'
+        '"${CI_SYSTEM_DEPS_READY:-0}" "${CI-unset}" "${DISTRO-unset}" > installed.txt\nfi\n'
     )
     (pr / "feature.py").write_text("pull request")
     sudo = bins / "sudo"
@@ -63,6 +64,8 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
         "GITHUB_WORKSPACE": str(base),
         "YARN_CACHE_DIR": str(yarn_cache),
         "CI_QA": "1",
+        "CI": "true",
+        "INSTALLER_ENV": '{"DISTRO":"ubuntu"}',
         "SYSTEM_DEPS_ENABLED": str(system_deps).lower(),
         "SECRET_SENTINEL": "private",
     }
@@ -72,9 +75,11 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
         check=True,
         capture_output=True,
     )
-    assert (run / "installed.txt").read_text() == f"base:unset:1:{int(system_deps)}"
+    assert (
+        run / "installed.txt"
+    ).read_text() == f"base:unset:1:{int(system_deps)}:true:ubuntu"
     if system_deps:
-        assert (base / "system.txt").read_text() == "base:unset"
+        assert (base / "system.txt").read_text() == "base:unset:true:ubuntu"
     assert (home / ".cache" / "pip" / "package").read_text() == "pip cache"
     assert (home / ".cache" / "ci-deps" / "package").read_text() == "other cache"
     assert (home / ".cache" / "yarn" / "v6" / "package").read_text() == "yarn cache"
@@ -85,4 +90,6 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(tmp_path, system_d
     )
     assert (run / "feature.py").read_text() == "pull request"
     assert not (run / "deleted.py").exists()
-    assert (run / "installed.txt").read_text() == f"base:unset:1:{int(system_deps)}"
+    assert (
+        run / "installed.txt"
+    ).read_text() == f"base:unset:1:{int(system_deps)}:true:ubuntu"

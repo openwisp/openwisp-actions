@@ -429,6 +429,23 @@ class TestRunReview(unittest.TestCase):
         self.assertIn(b"Could not check model output for credentials", result.stdout)
         self.assertNotIn(b"provider message", result.stdout)
 
+    def test_replaced_token_in_model_output_is_not_logged(self):
+        start = {"type": "tool_start", "args": ["-c", "./runtests"]}
+        for token in ("first-secret", "second-secret"):
+            with self.subTest(token=token):
+                event = {"type": "error", "error": {"data": {"message": token}}}
+                _, result = self.run_review(
+                    event,
+                    status=1,
+                    auth={"access": "first-secret"},
+                    rotated_auth={"provider": {"access": "second-secret"}},
+                    start_event=start,
+                    refreshed_auth={"provider": {"access": "third-secret"}},
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(token.encode(), result.stdout)
+                self.assertIn(b"The model output contains a credential", result.stdout)
+
     def test_nonmatching_credentials_allow_failed_run_diagnostics(self):
         event = {
             "type": "error",

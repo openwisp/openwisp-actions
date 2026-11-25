@@ -50,6 +50,9 @@ INITIAL_AUTH="$XDG_DATA_HOME/initial-auth.json"
 if [ -f "$AUTH" ]; then
   install -m 600 "$AUTH" "$INITIAL_AUTH"
 fi
+mkdir -p "$XDG_DATA_HOME"
+chmod 700 "$XDG_DATA_HOME"
+HISTORY="$XDG_DATA_HOME/credential-history"
 export AI_REVIEW_STARTS="$RUNNER_TEMP/tool-starts.jsonl"
 STATUS=0
 : >"$EVENTS"
@@ -61,8 +64,8 @@ REVIEW=$!
 # the events are lost with it. Disable workflow commands while printing model output.
 STOP=$(openssl rand -hex 16)
 echo "::stop-commands::$STOP"
-python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" "$INITIAL_AUTH" "$REVIEW" \
-  "$EVENTS" "$AI_REVIEW_STARTS" &
+python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" "$INITIAL_AUTH" "$HISTORY" "$REVIEW" \
+  "$AI_REVIEW_STARTS" "$EVENTS" &
 PROGRESS=$!
 bash "$DIR/monitor_resources.sh" "$REVIEW" 60 &
 MONITOR=$!
@@ -74,6 +77,14 @@ if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
   echo "::warning::The review hit the $REVIEW_MINUTES-minute limit"
 fi
 
+# The output can contain a token replaced during the review: the progress printer saved
+# every token it saw.
+if ! TOKENS=$(cat "$HISTORY" 2>/dev/null); then
+  rm -f "$AUTH"
+  echo "::error::Could not check model output for credentials"
+  exit 1
+fi
+rm -f "$HISTORY"
 # Copilot is configured with an auth file. Without its token, diagnostics cannot be scanned safely.
 if [[ "$MODEL" == github-copilot/* ]] && \
   ! jq -e '[."github-copilot" | .refresh, .access | select(type == "string" and length > 0)] | length > 0' \
@@ -83,25 +94,25 @@ if [[ "$MODEL" == github-copilot/* ]] && \
   exit 1
 fi
 if [ -f "$AUTH" ]; then
-  if ! TOKENS=$(jq -r '.[] | .refresh, .access, .key | select(type == "string" and length > 0)' \
+  if ! CURRENT=$(jq -r '.[] | .refresh, .access, .key | select(type == "string" and length > 0)' \
     "$AUTH" 2>/dev/null); then
     rm -f "$AUTH"
     echo "::error::Could not check model output for credentials"
     exit 1
   fi
   rm -f "$AUTH"
-  if [ -n "$TOKENS" ]; then
-    # Pass tokens through stdin so sandbox processes cannot read them in the process list.
-    if printf '%s\n' "$TOKENS" | grep -qF -f - "$EVENTS"; then
-      echo "::error::The model output contains a credential"
-      exit 1
-    else
-      SCAN_STATUS=$?
-      if [ "$SCAN_STATUS" -ne 1 ]; then
-        echo "::error::Could not check model output for credentials"
-        exit 1
-      fi
-    fi
+  TOKENS+=$'\n'$CURRENT
+fi
+# Pass tokens through stdin so sandbox processes cannot read them in the process list.
+# Drop empty lines, which would match any output.
+if printf '%s\n' "$TOKENS" | sed '/^$/d' | grep -qF -f - "$EVENTS"; then
+  echo "::error::The model output contains a credential"
+  exit 1
+else
+  SCAN_STATUS=$?
+  if [ "$SCAN_STATUS" -ne 1 ]; then
+    echo "::error::Could not check model output for credentials"
+    exit 1
   fi
 fi
 

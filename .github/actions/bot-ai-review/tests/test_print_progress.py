@@ -22,7 +22,8 @@ class TestPrintProgress(unittest.TestCase):
         with open(auth, "w") as f:
             f.write('{"github-copilot": {"access": "tok')
         events = os.path.join(directory.name, "events.jsonl")
-        open(events, "w").close()
+        for path in (events, os.path.join(directory.name, "starts.jsonl")):
+            open(path, "w").close()
         # Stands in for the review: the printer exits when it ends, at the latest
         # after 30 seconds, so a missing line cannot block the test.
         review = subprocess.Popen(["sleep", "30"])
@@ -33,7 +34,9 @@ class TestPrintProgress(unittest.TestCase):
                 auth,
                 "github-copilot/model",
                 os.path.join(directory.name, "missing-initial-auth.json"),
+                os.path.join(directory.name, "history"),
                 str(review.pid),
+                os.path.join(directory.name, "starts.jsonl"),
                 events,
             ],
             stdout=subprocess.PIPE,
@@ -67,3 +70,51 @@ class TestPrintProgress(unittest.TestCase):
         review.kill()
         review.wait()
         self.assertEqual(process.wait(timeout=10), 0)
+
+    def test_start_is_printed_before_its_completion(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        starts = os.path.join(directory.name, "starts.jsonl")
+        events = os.path.join(directory.name, "events.jsonl")
+        with open(starts, "w") as f:
+            f.write(json.dumps({"type": "tool_start", "args": ["-c", "./runtests"]}))
+            f.write("\n")
+        with open(events, "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "type": "tool_use",
+                        "part": {
+                            "tool": "bash",
+                            "state": {
+                                "status": "completed",
+                                "input": {"command": "./runtests"},
+                            },
+                        },
+                    }
+                )
+            )
+            f.write("\n")
+        # Both records are read in one pass, as when a command ends quickly.
+        review = subprocess.Popen(["true"])
+        review.wait()
+        result = subprocess.run(
+            [
+                sys.executable,
+                SCRIPT,
+                os.path.join(directory.name, "auth.json"),
+                "provider/model",
+                os.path.join(directory.name, "initial-auth.json"),
+                os.path.join(directory.name, "history"),
+                str(review.pid),
+                starts,
+                events,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(
+            result.stdout.splitlines(),
+            ["Started: ./runtests", "Tool: bash (completed) ./runtests"],
+        )

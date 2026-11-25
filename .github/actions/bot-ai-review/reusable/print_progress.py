@@ -6,7 +6,8 @@ by OpenCode. The job log then shows the last command even if the runner is
 lost while it runs.
 Lines are checked for the provider's credentials like the output of a
 finished review: a line is hidden when it contains one, or when the
-credentials cannot be read.
+credentials cannot be read. Every token seen is saved for the scan of the
+review's output, which can contain a token replaced during the review.
 """
 
 import json
@@ -81,30 +82,42 @@ def show(line, tokens, known):
     return text
 
 
+def save(path, tokens):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.writelines(f"{token}\n" for token in tokens)
+
+
 def main():
-    auth, model, initial, pid, *paths = sys.argv[1:]
+    auth, model, initial, history, pid, starts, events = sys.argv[1:]
     # The credentials before the review started, which a refresh may replace.
     known = read_credentials(initial, model) or set()
-    files = [open(path, "rb") for path in paths]
+    # Read completions before starts and print starts first: a start is then
+    # never printed after its completion, so a finished command never looks
+    # like it is still running.
+    files = {path: open(path, "rb") for path in (events, starts)}
     # Process only complete lines, which OpenCode may write in parts.
-    partial = [b""] * len(files)
+    partial = {path: b"" for path in files}
+    lines = {}
     while True:
         # Check before the last read, so events written before the end are printed.
         ended = not running(int(pid))
-        # OpenCode can replace a token at any time. Read the file between events
-        # too, so a token replaced before the next event is still known.
+        for path, f in files.items():
+            *lines[path], partial[path] = (partial[path] + f.read()).split(b"\n")
+        # Read the credentials after the events, so they include any token the
+        # events can contain. Read them between events too, so a token replaced
+        # before the next event is still known.
         tokens = read_credentials(auth, model)
         if tokens is not None:
             known |= tokens
-        for index, f in enumerate(files):
-            *lines, partial[index] = (partial[index] + f.read()).split(b"\n")
-            for line in lines:
-                text = show(line, tokens, known)
-                if text is not None:
-                    print(text, flush=True)
+        for line in lines[starts] + lines[events]:
+            text = show(line, tokens, known)
+            if text is not None:
+                print(text, flush=True)
         if ended:
             break
         time.sleep(0.2)
+    save(history, known)
 
 
 if __name__ == "__main__":

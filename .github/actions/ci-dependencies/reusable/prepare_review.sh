@@ -10,6 +10,8 @@ INSTALLER_ENV=$(jq -ce 'if type == "object" and all(to_entries[];
   then . else error("invalid installer environment") end' \
   <<<"${INSTALLER_ENV:-\{\}}")
 mapfile -d '' -t MATRIX_ENV < <(jq -j 'to_entries[] | .key, "=", .value, "\u0000"' <<<"$INSTALLER_ENV")
+MATRIX_DJANGO_VERSION=$(jq -r '.DJANGO_VERSION // ""' <<<"$INSTALLER_ENV")
+DJANGO_VERSION=${DJANGO_VERSION:-$MATRIX_DJANGO_VERSION}
 sudo rsync -a --chown=reviewer:reviewer --exclude=/.git --exclude=/openwisp-actions \
   "$GITHUB_WORKSPACE/" "$RUN/"
 # Record base files before installation so synchronization removes files deleted by the PR.
@@ -31,7 +33,7 @@ if [ "${SYSTEM_DEPS_ENABLED:-false}" = true ]; then
   # Run only the system phase from trusted base code before the reviewer sees PR files.
   # The reviewer phase must skip system setup because it has no sudo privileges.
   (cd "$GITHUB_WORKSPACE" && env -i "${MATRIX_ENV[@]}" HOME="$HOME" PATH="$PATH" CI=true \
-    DJANGO_VERSION="${DJANGO_VERSION:-}" CI_QA="${CI_QA:-0}" \
+    DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \
     CI_DEPS_CACHE="$HOME/.cache/ci-deps" CI_SYSTEM_DEPS_ONLY=1 bash ./install-ci-deps.sh)
   SYSTEM_DEPS_READY=1
 fi
@@ -41,7 +43,7 @@ if [ -d "$HOME/.cache/ci-deps" ]; then
 fi
 cd "$RUN"
 sudo -n -H -u reviewer env -i "${MATRIX_ENV[@]}" HOME="$REVIEW_HOME" USER=reviewer LOGNAME=reviewer CI=true \
-  PATH="$PATH" DJANGO_VERSION="${DJANGO_VERSION:-}" CI_QA="${CI_QA:-0}" \
+  PATH="$PATH" DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \
   CI_SYSTEM_DEPS_READY="$SYSTEM_DEPS_READY" \
   CI_DEPS_CACHE="$REVIEW_HOME/.cache/ci-deps" \
   YARN_CACHE_FOLDER="$REVIEW_HOME/.cache/yarn" \

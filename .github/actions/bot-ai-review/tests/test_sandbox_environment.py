@@ -60,7 +60,11 @@ def test_pip_configuration_allows_virtualenv_installation(tmp_path):
     home = tmp_path / "reviewer"
     home.mkdir()
     env = {
-        **os.environ,
+        **{
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("PIP_")
+        },
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
         "TEST_HOME": str(home),
     }
@@ -70,7 +74,10 @@ def test_pip_configuration_allows_virtualenv_installation(tmp_path):
     assert result.returncode == 0, result.stderr
     venv = tmp_path / "venv"
     subprocess.run(
-        [sys.executable, "-m", "venv", str(venv)], check=True, capture_output=True
+        [sys.executable, "-m", "venv", str(venv)],
+        env=env,
+        check=True,
+        capture_output=True,
     )
     result = subprocess.run(
         [

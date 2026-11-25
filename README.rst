@@ -545,6 +545,8 @@ mark one row with ``review_default: true``. Declare required browsers with
 Without standardized CI, reviews continue without dependency setup. The
 installer receives ``CI=true`` and direct matrix references in the test
 job and dependency step environment. Other expressions are not evaluated.
+If a ``django-version`` axis is present, it takes precedence over a
+``DJANGO_VERSION`` value from another axis.
 
 For privileged host dependencies, set ``AI_REVIEW_SYSTEM_DEPS: "true"`` in
 the test job environment and follow the `installer phase contract

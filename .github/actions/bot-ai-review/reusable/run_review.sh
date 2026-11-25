@@ -44,8 +44,10 @@ REVIEW_MINUTES=50
 PROMPT=$("$DIR/build_prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
   "$RUNNER_TEMP/shared-guidance/guidance.md")
 AUTH="$XDG_DATA_HOME/opencode/auth.json"
+export AI_REVIEW_STARTS="$RUNNER_TEMP/tool-starts.jsonl"
 STATUS=0
 : >"$EVENTS"
+: >"$AI_REVIEW_STARTS"
 timeout --kill-after=30s "${REVIEW_MINUTES}m" opencode run "$PROMPT" --pure --format json \
   --model "$MODEL" --dir "$PR_DIR" "${VARIANT[@]}" "${FILES[@]}" </dev/null >"$EVENTS" &
 REVIEW=$!
@@ -53,7 +55,8 @@ REVIEW=$!
 # the events are lost with it. Disable workflow commands while printing model output.
 STOP=$(openssl rand -hex 16)
 echo "::stop-commands::$STOP"
-tail -n +1 -f --pid="$REVIEW" "$EVENTS" | python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" &
+tail -q -n +1 -f --pid="$REVIEW" "$EVENTS" "$AI_REVIEW_STARTS" |
+  python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" &
 PROGRESS=$!
 bash "$DIR/monitor_resources.sh" "$REVIEW" 60 &
 MONITOR=$!
@@ -73,7 +76,7 @@ if [[ "$MODEL" == github-copilot/* ]] && \
   exit 1
 fi
 if [ -f "$AUTH" ]; then
-  if ! TOKENS=$(jq -r '.[] | .refresh, .access | select(type == "string" and length > 0)' \
+  if ! TOKENS=$(jq -r '.[] | .refresh, .access, .key | select(type == "string" and length > 0)' \
     "$AUTH" 2>/dev/null); then
     rm -f "$AUTH"
     echo "::error::Could not check model output for credentials"

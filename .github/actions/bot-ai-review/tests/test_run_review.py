@@ -96,6 +96,7 @@ class TestRunReview(unittest.TestCase):
         grep_script=None,
         model="provider/model",
         wait_file=None,
+        start_event=None,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -130,6 +131,10 @@ class TestRunReview(unittest.TestCase):
                 "  exit 0\n"
                 "fi\n"
                 'printf \'%s\\n\' "$@" >"$RUNNER_TEMP/args"\n'
+                # Stand in for the sandbox shell recording a command as it starts.
+                'if [ -n "${START_EVENT:-}" ]; then\n'
+                '  printf \'%s\\n\' "$START_EVENT" >>"$AI_REVIEW_STARTS"\n'
+                "fi\n"
                 "printf '%s\\n' \"$EVENT\"\n"
                 # Give up after 30 seconds, so a missing tool call fails the test.
                 "i=0\n"
@@ -158,6 +163,7 @@ class TestRunReview(unittest.TestCase):
             "EVENT": json.dumps(event),
             "MODEL_STATUS": str(status),
             "WAIT_FILE": wait_file or "",
+            "START_EVENT": json.dumps(start_event) if start_event else "",
         }
         if wait_file:
             process = subprocess.Popen(
@@ -199,6 +205,26 @@ class TestRunReview(unittest.TestCase):
         self.assertEqual(process.wait(timeout=30), 1)
         self.assertNotIn(b"Tool: bash", output, "The tool call was printed twice")
 
+    def test_commands_are_printed_when_they_start(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        wait_file = os.path.join(directory.name, "finish")
+        event = {"type": "text", "part": {"text": "not JSON"}}
+        start = {"type": "tool_start", "args": ["-c", "./runtests"]}
+        root, process = self.run_review(event, wait_file=wait_file, start_event=start)
+        for line in process.stdout:
+            if line == b"Started: ./runtests\n":
+                break
+        else:
+            self.fail("The started command was not printed")
+        self.assertFalse(
+            os.path.exists(os.path.join(root, "model-finished")),
+            "The command was printed only after the model run ended",
+        )
+        open(wait_file, "w").close()
+        process.stdout.read()
+        self.assertEqual(process.wait(timeout=30), 0)
+
     def test_tool_calls_are_printed_with_workflow_commands_disabled(self):
         _, result = self.run_review(self.TOOL_EVENT)
         lines = result.stdout.decode().splitlines()
@@ -225,6 +251,23 @@ class TestRunReview(unittest.TestCase):
         _, result = self.run_review(event, auth={"access": "access-secret"})
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn(b"access-secret", result.stdout)
+        self.assertIn(b"Tool call hidden: it contains a credential", result.stdout)
+        self.assertIn(b"The model output contains a credential", result.stdout)
+
+    def test_tool_call_containing_an_api_key_is_hidden(self):
+        event = {
+            "type": "tool_use",
+            "part": {
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "input": {"command": "echo api-secret"},
+                },
+            },
+        }
+        _, result = self.run_review(event, auth={"type": "api", "key": "api-secret"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(b"api-secret", result.stdout)
         self.assertIn(b"Tool call hidden: it contains a credential", result.stdout)
         self.assertIn(b"The model output contains a credential", result.stdout)
 

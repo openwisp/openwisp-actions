@@ -1,7 +1,9 @@
 """Print the review's tool calls while it runs.
 
-The events are read from standard input as they are written, so the job log
-shows the last command even if the runner is lost before the review ends.
+The events are read from standard input as they are written: commands when
+they start, recorded by the sandbox shell, and tool calls when they end,
+reported by OpenCode. The job log then shows the last command even if the
+runner is lost while it runs.
 Lines are checked for the provider's credentials like the output of a
 finished review: a line containing one is hidden, and nothing is printed
 when the credentials cannot be read.
@@ -27,7 +29,11 @@ def read_credentials(path, model):
         token
         for provider in providers.values()
         if isinstance(provider, dict)
-        for token in (provider.get("refresh"), provider.get("access"))
+        for token in (
+            provider.get("refresh"),
+            provider.get("access"),
+            provider.get("key"),
+        )
         if isinstance(token, str) and token
     }
     if model.startswith("github-copilot/") and not tokens:
@@ -36,6 +42,9 @@ def read_credentials(path, model):
 
 
 def describe(event):
+    if event.get("type") == "tool_start":
+        args = event.get("args") or [""]
+        return f"Started: {args[-1]}"
     part = event.get("part") or {}
     state = part.get("state") or {}
     inputs = state.get("input") or {}
@@ -51,7 +60,10 @@ def main():
             event = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(event, dict) or event.get("type") != "tool_use":
+        if not isinstance(event, dict) or event.get("type") not in (
+            "tool_start",
+            "tool_use",
+        ):
             continue
         # A token can be refreshed during the review, so read the file again.
         tokens = read_credentials(auth, model)

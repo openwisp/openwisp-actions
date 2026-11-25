@@ -298,7 +298,7 @@ class TestRunReview(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn(b"./runtests", result.stdout)
         self.assertIn(
-            b"Tool calls are not shown: the credentials could not be read",
+            b"Tool call hidden: the credentials could not be read",
             result.stdout,
         )
 

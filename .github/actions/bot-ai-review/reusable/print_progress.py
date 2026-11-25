@@ -5,8 +5,8 @@ commands when they start, recorded by the sandbox shell, or tool calls when
 they end, reported by OpenCode. The job log then shows the last command even
 if the runner is lost while it runs.
 Lines are checked for the provider's credentials like the output of a
-finished review: a line containing one is hidden, and nothing is printed
-when the credentials cannot be read.
+finished review: a line is hidden when it contains one, or when the
+credentials cannot be read.
 """
 
 import json
@@ -65,15 +65,16 @@ def main():
             "tool_use",
         ):
             continue
-        # A token can be refreshed during the review, so read the file again.
+        # A token can be refreshed during the review, so read the file again. A
+        # refresh can also leave it briefly incomplete: hide only this line then.
         tokens = read_credentials(auth, model)
         if tokens is None:
-            print("Tool calls are not shown: the credentials could not be read")
-            return
-        known |= tokens
-        text = describe(event)
-        if any(token in text for token in known):
-            text = "Tool call hidden: it contains a credential"
+            text = "Tool call hidden: the credentials could not be read"
+        else:
+            known |= tokens
+            text = describe(event)
+            if any(token in text for token in known):
+                text = "Tool call hidden: it contains a credential"
         print(text, flush=True)
 
 

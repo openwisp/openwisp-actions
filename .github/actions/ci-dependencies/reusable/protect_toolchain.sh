@@ -22,9 +22,12 @@ for path in "${RUNNER_TOOL_CACHE:?}" "${RUNNER_TEMP:?}" "${GITHUB_WORKSPACE:?}";
     exit 1
   fi
   if sudo -n -u reviewer test -x "$path"; then
-    if [ -n "$(sudo -n -u reviewer find -L "$path" -writable -print -quit -o \
-      \( -type d ! -readable -prune \))" ]; then
-      echo "::error::Reviewer-writable protected file" >&2
+    writable=$(sudo -n -u reviewer find -L "$path" -writable -print -quit -o \
+      \( -type d ! -readable -prune \))
+    if [ -n "$writable" ]; then
+      # Paths are encoded so file names cannot create workflow commands in logs.
+      encoded=$(printf '%s' "$writable" | base64 -w0)
+      echo "::error::Reviewer-writable protected file (base64): $encoded" >&2
       exit 1
     fi
   fi

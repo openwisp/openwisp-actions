@@ -11,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "ci-dependencies" / "reusable" / "protect_toolchain.sh"
 
 
-@pytest.mark.parametrize("unsafe", ["", "directory", "executable", "owner"])
+@pytest.mark.parametrize(
+    "unsafe", ["", "directory", "executable", "owner", "protected"]
+)
 def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
     cache = tmp_path / "cache"
     workspace = tmp_path / "workspace"
@@ -30,9 +32,11 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         "args = sys.argv[1:]\n"
         "if args[:3] == ['-n', '-u', 'reviewer']:\n"
         "    args = args[3:]\n"
+        "    if args[:2] == ['test', '-x']: sys.exit(0)\n"
         "    if args[0] == 'test': sys.exit(0 if args[-1] == os.environ.get('UNSAFE_PATH') else 1)\n"
         "    if args[0] == 'find':\n"
         "        if '-maxdepth' in args and os.environ['UNSAFE_KIND'] == 'executable': print('writable')\n"
+        "        if '-maxdepth' not in args and os.environ['UNSAFE_KIND'] == 'protected': print('writable')\n"
         "        sys.exit(0)\n"
         "if args[0] == 'find':\n"
         "    if os.environ['UNSAFE_KIND'] == 'owner': print('owned')\n"
@@ -53,7 +57,11 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         ["bash", str(SCRIPT)], env=env, capture_output=True, text=True
     )
     assert result.returncode == int(bool(unsafe)), result.stderr
-    directories = (cache,) if unsafe == "owner" else (cache, workspace, runner_temp)
+    directories = (
+        (cache,)
+        if unsafe in ("owner", "protected")
+        else (cache, workspace, runner_temp)
+    )
     for directory in directories:
         assert not (directory.stat().st_mode & 0o022)
         assert not ((directory / "file").stat().st_mode & 0o022)

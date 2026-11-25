@@ -44,6 +44,12 @@ REVIEW_MINUTES=50
 PROMPT=$("$DIR/build_prompt.sh" "$STAGE" "$REVIEW_MINUTES" \
   "$RUNNER_TEMP/shared-guidance/guidance.md")
 AUTH="$XDG_DATA_HOME/opencode/auth.json"
+# OpenCode can replace a token during the review. Keep the starting credentials so a
+# line containing a replaced token is still hidden.
+INITIAL_AUTH="$XDG_DATA_HOME/initial-auth.json"
+if [ -f "$AUTH" ]; then
+  install -m 600 "$AUTH" "$INITIAL_AUTH"
+fi
 export AI_REVIEW_STARTS="$RUNNER_TEMP/tool-starts.jsonl"
 STATUS=0
 : >"$EVENTS"
@@ -57,15 +63,17 @@ STOP=$(openssl rand -hex 16)
 echo "::stop-commands::$STOP"
 # Follow each file separately: a line still being written to one file must not be
 # split by a line from the other.
-tail -n +1 -f --pid="$REVIEW" "$EVENTS" | python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" &
+tail -n +1 -f --pid="$REVIEW" "$EVENTS" |
+  python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" "$INITIAL_AUTH" &
 EVENTS_PROGRESS=$!
 tail -n +1 -f --pid="$REVIEW" "$AI_REVIEW_STARTS" |
-  python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" &
+  python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" "$INITIAL_AUTH" &
 STARTS_PROGRESS=$!
 bash "$DIR/monitor_resources.sh" "$REVIEW" 60 &
 MONITOR=$!
 wait "$REVIEW" || STATUS=$?
 wait "$EVENTS_PROGRESS" "$STARTS_PROGRESS" "$MONITOR" || true
+rm -f "$INITIAL_AUTH"
 echo "::$STOP::"
 if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
   echo "::warning::The review hit the $REVIEW_MINUTES-minute limit"

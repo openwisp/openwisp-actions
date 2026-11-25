@@ -53,8 +53,9 @@ def describe(event):
 
 
 def main():
-    auth, model = sys.argv[1:3]
-    known = set()
+    auth, model, initial = sys.argv[1:4]
+    # The credentials before the review started, which a refresh may replace.
+    known = read_credentials(initial, model) or set()
     for line in sys.stdin:
         try:
             event = json.loads(line)

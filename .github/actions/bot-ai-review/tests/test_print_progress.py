@@ -22,7 +22,13 @@ class TestPrintProgress(unittest.TestCase):
         with open(auth, "w") as f:
             f.write('{"github-copilot": {"access": "tok')
         process = subprocess.Popen(
-            [sys.executable, SCRIPT, auth, "github-copilot/model"],
+            [
+                sys.executable,
+                SCRIPT,
+                auth,
+                "github-copilot/model",
+                os.path.join(directory.name, "missing-initial-auth.json"),
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             text=True,

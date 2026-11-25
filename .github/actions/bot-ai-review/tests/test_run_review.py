@@ -98,6 +98,7 @@ class TestRunReview(unittest.TestCase):
         wait_file=None,
         start_event=None,
         split_event=False,
+        rotated_auth=None,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -132,6 +133,10 @@ class TestRunReview(unittest.TestCase):
                 "  exit 0\n"
                 "fi\n"
                 'printf \'%s\\n\' "$@" >"$RUNNER_TEMP/args"\n'
+                # Stand in for OpenCode replacing a token before reporting a tool call.
+                'if [ -n "${ROTATED_AUTH:-}" ]; then\n'
+                '  printf \'%s\' "$ROTATED_AUTH" >"$XDG_DATA_HOME/opencode/auth.json"\n'
+                "fi\n"
                 # Stand in for the sandbox shell recording a command as it starts,
                 # optionally while OpenCode has written only part of an event.
                 'if [ -n "${SPLIT_EVENT:-}" ]; then\n'
@@ -177,6 +182,7 @@ class TestRunReview(unittest.TestCase):
             "WAIT_FILE": wait_file or "",
             "START_EVENT": json.dumps(start_event) if start_event else "",
             "SPLIT_EVENT": "1" if split_event else "",
+            "ROTATED_AUTH": json.dumps(rotated_auth) if rotated_auth else "",
         }
         if wait_file:
             process = subprocess.Popen(
@@ -292,6 +298,25 @@ class TestRunReview(unittest.TestCase):
         self.assertNotIn(b"api-secret", result.stdout)
         self.assertIn(b"Tool call hidden: it contains a credential", result.stdout)
         self.assertIn(b"The model output contains a credential", result.stdout)
+
+    def test_tool_call_containing_a_replaced_token_is_hidden(self):
+        event = {
+            "type": "tool_use",
+            "part": {
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "input": {"command": "echo old-secret"},
+                },
+            },
+        }
+        _, result = self.run_review(
+            event,
+            auth={"access": "old-secret"},
+            rotated_auth={"provider": {"access": "new-secret"}},
+        )
+        self.assertNotIn(b"old-secret", result.stdout)
+        self.assertIn(b"Tool call hidden: it contains a credential", result.stdout)
 
     def test_tool_calls_are_not_printed_without_copilot_credentials(self):
         _, result = self.run_review(self.TOOL_EVENT, model="github-copilot/model")

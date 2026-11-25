@@ -3,11 +3,22 @@
 set -euo pipefail
 
 check_parents() {
-  local parent=$1
+  local parent=$1 encoded
   while [ "$parent" != / ]; do
     if sudo -n -u reviewer test -w "$parent"; then
-      echo "::error::Reviewer-writable protected directory" >&2
-      return 1
+      case "$parent" in
+        /tmp|/home|/usr)
+          encoded=$(printf '%s' "$parent" | base64 -w0)
+          echo "::error::Unsafe writable parent (base64): $encoded" >&2
+          return 1
+          ;;
+      esac
+      sudo chmod go-w -- "$parent"
+      if sudo -n -u reviewer test -w "$parent"; then
+        encoded=$(printf '%s' "$parent" | base64 -w0)
+        echo "::error::Reviewer-writable protected directory (base64): $encoded" >&2
+        return 1
+      fi
     fi
     parent=$(dirname "$parent")
   done

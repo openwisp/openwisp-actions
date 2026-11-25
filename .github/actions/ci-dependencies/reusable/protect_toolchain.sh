@@ -17,12 +17,12 @@ for path in "${RUNNER_TOOL_CACHE:?}" "${RUNNER_TEMP:?}" "${GITHUB_WORKSPACE:?}";
   path=$(realpath -e "$path")
   case "$path" in /|/tmp|/home|/opt|/usr) echo "::error::Unsafe protection root" >&2; exit 1 ;; esac
   sudo chmod -R go-w -- "$path"
-  if [ -n "$(sudo find -L "$path" -user reviewer -print -quit)" ]; then
+  if [ -n "$(sudo find "$path" -user reviewer -print -quit)" ]; then
     echo "::error::Reviewer owns a protected file" >&2
     exit 1
   fi
   if sudo -n -u reviewer test -x "$path"; then
-    writable=$(sudo -n -u reviewer find -L "$path" -writable -print -quit -o \
+    writable=$(sudo -n -u reviewer find "$path" -writable -print -quit -o \
       \( -type d ! -readable -prune \))
     if [ -n "$writable" ]; then
       # Paths are encoded so file names cannot create workflow commands in logs.
@@ -35,6 +35,7 @@ for path in "${RUNNER_TOOL_CACHE:?}" "${RUNNER_TEMP:?}" "${GITHUB_WORKSPACE:?}";
 done
 
 IFS=: read -r -a path_entries <<<"$PATH"
+tool_cache=$(realpath -e "$RUNNER_TOOL_CACHE")
 for path in "${path_entries[@]}"; do
   case "$path" in /*) ;; *) echo "::error::Unsafe PATH entry" >&2; exit 1 ;; esac
   [ -d "$path" ] || continue
@@ -43,4 +44,16 @@ for path in "${path_entries[@]}"; do
     echo "::error::Reviewer-writable PATH entry" >&2
     exit 1
   fi
+  case "$(realpath -e "$path")" in
+    "$tool_cache"/*)
+      # Only selected runtimes matter; other cached SDKs may link outside the cache.
+      runtime=$(dirname "$(realpath -e "$path")")
+      if [ -n "$(sudo find -L "$runtime" -user reviewer -print -quit)" ] ||
+        [ -n "$(sudo -n -u reviewer find -L "$runtime" -writable -print -quit -o \
+          \( -type d ! -readable -prune \))" ]; then
+        echo "::error::Reviewer-writable runtime file" >&2
+        exit 1
+      fi
+      ;;
+  esac
 done

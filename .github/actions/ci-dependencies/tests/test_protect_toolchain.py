@@ -12,7 +12,7 @@ SCRIPT = ROOT / "ci-dependencies" / "reusable" / "protect_toolchain.sh"
 
 
 @pytest.mark.parametrize(
-    "unsafe", ["", "directory", "executable", "owner", "protected"]
+    "unsafe", ["", "directory", "executable", "owner", "protected", "runtime"]
 )
 def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
     cache = tmp_path / "cache"
@@ -21,6 +21,8 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
     bins = tmp_path / "bin"
     for directory in (cache, workspace, runner_temp, bins):
         directory.mkdir()
+    runtime_bin = cache / "runtime" / "bin"
+    runtime_bin.mkdir(parents=True)
     for directory in (cache, workspace, runner_temp):
         (directory / "file").write_text("fixture")
         (directory / "file").chmod(0o666)
@@ -37,6 +39,8 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         "    if args[0] == 'find':\n"
         "        if '-maxdepth' in args and os.environ['UNSAFE_KIND'] == 'executable': print('writable')\n"
         "        if '-maxdepth' not in args and os.environ['UNSAFE_KIND'] == 'protected': print('writable')\n"
+        "        if '-L' in args and '-maxdepth' not in args "
+        "and os.environ['UNSAFE_KIND'] == 'runtime': print('writable')\n"
         "        sys.exit(0)\n"
         "if args[0] == 'find':\n"
         "    if os.environ['UNSAFE_KIND'] == 'owner': print('owned')\n"
@@ -46,7 +50,7 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
     sudo.chmod(0o755)
     env = {
         **os.environ,
-        "PATH": f"{bins}:/usr/bin:/bin",
+        "PATH": f"{bins}:{runtime_bin}:/usr/bin:/bin",
         "RUNNER_TOOL_CACHE": str(cache),
         "RUNNER_TEMP": str(runner_temp),
         "GITHUB_WORKSPACE": str(workspace),

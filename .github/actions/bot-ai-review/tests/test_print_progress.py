@@ -130,3 +130,22 @@ class TestPrintProgress(unittest.TestCase):
             [process.stdout.readline(), process.stdout.readline()],
             ["Tool: bash (completed) ./first\n", "Started: ./second\n"],
         )
+
+    def test_credentials_are_read_after_the_events(self):
+        with open(self.auth, "w") as f:
+            json.dump({"provider": {"access": "first-secret"}}, f)
+        # A pipe blocks the printer's read of the events until it is closed, so
+        # the token can be replaced while the printer reads them.
+        os.remove(self.events)
+        os.mkfifo(self.events)
+        process = self.follow(self.review())
+        with open(self.events, "w") as f:
+            # Let a printer that reads the credentials first do so.
+            time.sleep(0.5)
+            f.write(json.dumps(start("echo second-secret")) + "\n")
+            with open(f"{self.auth}.new", "w") as new:
+                json.dump({"provider": {"access": "second-secret"}}, new)
+            os.replace(f"{self.auth}.new", self.auth)
+        self.assertEqual(
+            process.stdout.readline(), "Tool call hidden: it contains a credential\n"
+        )

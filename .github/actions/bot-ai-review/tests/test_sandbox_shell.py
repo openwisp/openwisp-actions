@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 
 SCRIPT = os.path.join(
@@ -42,12 +43,12 @@ class TestSandboxShell(unittest.TestCase):
 
     def test_records_each_command_before_running_it(self):
         command = "echo \"$HOME\" && ./runtests -k 'x y'"
+        before = time.time() * 1000
         log, sudo_args = self.run_shell("-c", command)
         with open(log) as f:
-            self.assertEqual(
-                [json.loads(line) for line in f],
-                [{"type": "tool_start", "args": ["-c", command]}],
-            )
+            (record,) = [json.loads(line) for line in f]
+        self.assertTrue(before - 1 <= record.pop("timestamp") <= time.time() * 1000)
+        self.assertEqual(record, {"type": "tool_start", "args": ["-c", command]})
         self.assertEqual(sudo_args[-2:], ["-c", command])
 
     def test_does_not_record_without_a_log(self):

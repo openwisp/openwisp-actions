@@ -71,31 +71,22 @@ class TestPrintProgress(unittest.TestCase):
         review.wait()
         self.assertEqual(process.wait(timeout=10), 0)
 
-    def test_start_is_printed_before_its_completion(self):
+    def test_records_read_in_one_pass_are_printed_in_order(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         starts = os.path.join(directory.name, "starts.jsonl")
         events = os.path.join(directory.name, "events.jsonl")
         with open(starts, "w") as f:
-            f.write(json.dumps({"type": "tool_start", "args": ["-c", "./runtests"]}))
-            f.write("\n")
+            for timestamp, command in ((1, "./first"), (3, "./second")):
+                record = {"type": "tool_start", "timestamp": timestamp}
+                record["args"] = ["-c", command]
+                f.write(json.dumps(record) + "\n")
         with open(events, "w") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "type": "tool_use",
-                        "part": {
-                            "tool": "bash",
-                            "state": {
-                                "status": "completed",
-                                "input": {"command": "./runtests"},
-                            },
-                        },
-                    }
-                )
-            )
-            f.write("\n")
-        # Both records are read in one pass, as when a command ends quickly.
+            state = {"status": "completed", "input": {"command": "./first"}}
+            event = {"type": "tool_use", "timestamp": 2}
+            event["part"] = {"tool": "bash", "state": state}
+            f.write(json.dumps(event) + "\n")
+        # All records are read in one pass, as when commands end quickly.
         review = subprocess.Popen(["true"])
         review.wait()
         result = subprocess.run(
@@ -116,5 +107,9 @@ class TestPrintProgress(unittest.TestCase):
         )
         self.assertEqual(
             result.stdout.splitlines(),
-            ["Started: ./runtests", "Tool: bash (completed) ./runtests"],
+            [
+                "Started: ./first",
+                "Tool: bash (completed) ./first",
+                "Started: ./second",
+            ],
         )

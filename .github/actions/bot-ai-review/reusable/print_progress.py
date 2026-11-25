@@ -63,16 +63,22 @@ def running(pid):
     return True
 
 
-def show(line, tokens, known):
+def parse(line):
     try:
         event = json.loads(line)
     except ValueError:
         return None
-    if not isinstance(event, dict) or event.get("type") not in (
-        "tool_start",
-        "tool_use",
-    ):
-        return None
+    if isinstance(event, dict) and event.get("type") in ("tool_start", "tool_use"):
+        return event
+    return None
+
+
+def when(event):
+    timestamp = event.get("timestamp")
+    return timestamp if isinstance(timestamp, (int, float)) else 0
+
+
+def show(event, tokens, known):
     # A refresh can leave the file briefly incomplete: hide only this line then.
     if tokens is None:
         return "Tool call hidden: the credentials could not be read"
@@ -92,9 +98,8 @@ def main():
     auth, model, initial, history, pid, starts, events = sys.argv[1:]
     # The credentials before the review started, which a refresh may replace.
     known = read_credentials(initial, model) or set()
-    # Read completions before starts and print starts first: a start is then
-    # never printed after its completion, so a finished command never looks
-    # like it is still running.
+    # Read completions before starts: the start of every completion read is
+    # then read in the same pass or an earlier one.
     files = {path: open(path, "rb") for path in (events, starts)}
     # Process only complete lines, which OpenCode may write in parts.
     partial = {path: b"" for path in files}
@@ -110,10 +115,11 @@ def main():
         tokens = read_credentials(auth, model)
         if tokens is not None:
             known |= tokens
-        for line in lines[starts] + lines[events]:
-            text = show(line, tokens, known)
-            if text is not None:
-                print(text, flush=True)
+        batch = [parse(line) for line in lines[starts] + lines[events]]
+        # Print the starts and completions read in one pass in the order they
+        # happened, so the last command started is printed last.
+        for event in sorted(filter(None, batch), key=when):
+            print(show(event, tokens, known), flush=True)
         if ended:
             break
         time.sleep(0.2)

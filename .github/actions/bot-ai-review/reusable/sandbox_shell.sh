@@ -5,7 +5,9 @@
 # The job log can then show a command that exhausts the runner. This runs as the runner
 # user, so the sandbox user cannot change what is recorded.
 if [ -n "${AI_REVIEW_STARTS:-}" ]; then
-  python3 -c 'import json, sys; print(json.dumps({"type": "tool_start", "args": sys.argv[1:]}))' \
+  # Time in milliseconds, like OpenCode's events, to print both in the order they happened.
+  python3 -c 'import json, sys, time
+print(json.dumps({"type": "tool_start", "timestamp": int(time.time() * 1000), "args": sys.argv[1:]}))' \
     "$@" >>"$AI_REVIEW_STARTS" || true
 fi
 exec sudo -n -H -u reviewer -- /bin/bash -c '

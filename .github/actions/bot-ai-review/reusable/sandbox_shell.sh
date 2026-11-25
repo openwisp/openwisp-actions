@@ -6,7 +6,9 @@
 # user, so the sandbox user cannot change what is recorded.
 if [ -n "${AI_REVIEW_STARTS:-}" ]; then
   # Time in milliseconds, like OpenCode's events, to print both in the order they happened.
-  python3 -c 'import json, sys, time
+  # Isolated mode: the working directory can be the pull request, whose modules must not
+  # be imported by the runner user.
+  python3 -I -c 'import json, sys, time
 print(json.dumps({"type": "tool_start", "timestamp": int(time.time() * 1000), "args": sys.argv[1:]}))' \
     "$@" >>"$AI_REVIEW_STARTS" || true
 fi

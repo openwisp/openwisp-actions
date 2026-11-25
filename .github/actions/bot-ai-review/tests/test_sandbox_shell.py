@@ -15,7 +15,7 @@ SCRIPT = os.path.join(
 
 
 class TestSandboxShell(unittest.TestCase):
-    def run_shell(self, *args, starts=True):
+    def run_shell(self, *args, starts=True, cwd=None):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = directory.name
@@ -34,7 +34,7 @@ class TestSandboxShell(unittest.TestCase):
         if starts:
             env["AI_REVIEW_STARTS"] = log
         result = subprocess.run(
-            ["bash", SCRIPT, *args], env=env, capture_output=True, text=True
+            ["bash", SCRIPT, *args], env=env, capture_output=True, text=True, cwd=cwd
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         with open(env["SUDO_ARGS"]) as f:
@@ -55,3 +55,15 @@ class TestSandboxShell(unittest.TestCase):
         log, sudo_args = self.run_shell("-c", "true", starts=False)
         self.assertFalse(os.path.exists(log))
         self.assertEqual(sudo_args[-2:], ["-c", "true"])
+
+    def test_does_not_import_modules_from_the_pull_request(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        marker = os.path.join(directory.name, "imported")
+        # The recorder runs as the runner user in the pull request checkout.
+        with open(os.path.join(directory.name, "json.py"), "w") as f:
+            f.write(f"open({marker!r}, 'w').close()\n")
+        log, _ = self.run_shell("-c", "true", cwd=directory.name)
+        self.assertFalse(os.path.exists(marker))
+        with open(log) as f:
+            self.assertEqual(json.loads(f.read())["args"], ["-c", "true"])

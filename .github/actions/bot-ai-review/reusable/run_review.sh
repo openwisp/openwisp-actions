@@ -55,13 +55,17 @@ REVIEW=$!
 # the events are lost with it. Disable workflow commands while printing model output.
 STOP=$(openssl rand -hex 16)
 echo "::stop-commands::$STOP"
-tail -q -n +1 -f --pid="$REVIEW" "$EVENTS" "$AI_REVIEW_STARTS" |
+# Follow each file separately: a line still being written to one file must not be
+# split by a line from the other.
+tail -n +1 -f --pid="$REVIEW" "$EVENTS" | python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" &
+EVENTS_PROGRESS=$!
+tail -n +1 -f --pid="$REVIEW" "$AI_REVIEW_STARTS" |
   python3 "$DIR/print_progress.py" "$AUTH" "$MODEL" &
-PROGRESS=$!
+STARTS_PROGRESS=$!
 bash "$DIR/monitor_resources.sh" "$REVIEW" 60 &
 MONITOR=$!
 wait "$REVIEW" || STATUS=$?
-wait "$PROGRESS" "$MONITOR" || true
+wait "$EVENTS_PROGRESS" "$STARTS_PROGRESS" "$MONITOR" || true
 echo "::$STOP::"
 if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ]; then
   echo "::warning::The review hit the $REVIEW_MINUTES-minute limit"

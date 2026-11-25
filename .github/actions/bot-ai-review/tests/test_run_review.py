@@ -97,6 +97,7 @@ class TestRunReview(unittest.TestCase):
         model="provider/model",
         wait_file=None,
         start_event=None,
+        split_event=False,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -131,11 +132,22 @@ class TestRunReview(unittest.TestCase):
                 "  exit 0\n"
                 "fi\n"
                 'printf \'%s\\n\' "$@" >"$RUNNER_TEMP/args"\n'
-                # Stand in for the sandbox shell recording a command as it starts.
+                # Stand in for the sandbox shell recording a command as it starts,
+                # optionally while OpenCode has written only part of an event.
+                'if [ -n "${SPLIT_EVENT:-}" ]; then\n'
+                "  half=$((${#EVENT} / 2))\n"
+                '  printf \'%s\' "$EVENT" | cut -c "1-$half" | tr -d "\\n"\n'
+                "  sleep 1.5\n"
+                "fi\n"
                 'if [ -n "${START_EVENT:-}" ]; then\n'
                 '  printf \'%s\\n\' "$START_EVENT" >>"$AI_REVIEW_STARTS"\n'
                 "fi\n"
-                "printf '%s\\n' \"$EVENT\"\n"
+                'if [ -n "${SPLIT_EVENT:-}" ]; then\n'
+                "  sleep 1.5\n"
+                '  printf \'%s\' "$EVENT" | cut -c "$((half + 1))-"\n'
+                "else\n"
+                "  printf '%s\\n' \"$EVENT\"\n"
+                "fi\n"
                 # Give up after 30 seconds, so a missing tool call fails the test.
                 "i=0\n"
                 'while [ -n "${WAIT_FILE:-}" ] && [ ! -e "$WAIT_FILE" ] && [ "$i" -lt 300 ]; do\n'
@@ -164,6 +176,7 @@ class TestRunReview(unittest.TestCase):
             "MODEL_STATUS": str(status),
             "WAIT_FILE": wait_file or "",
             "START_EVENT": json.dumps(start_event) if start_event else "",
+            "SPLIT_EVENT": "1" if split_event else "",
         }
         if wait_file:
             process = subprocess.Popen(
@@ -224,6 +237,15 @@ class TestRunReview(unittest.TestCase):
         open(wait_file, "w").close()
         process.stdout.read()
         self.assertEqual(process.wait(timeout=30), 0)
+
+    def test_command_starting_while_an_event_is_written_is_printed(self):
+        start = {"type": "tool_start", "args": ["-c", "./runtests"]}
+        _, result = self.run_review(
+            self.TOOL_EVENT, start_event=start, split_event=True
+        )
+        lines = result.stdout.decode().splitlines()
+        self.assertIn("Started: ./runtests", lines)
+        self.assertIn("Tool: bash (completed) ./runtests", lines)
 
     def test_tool_calls_are_printed_with_workflow_commands_disabled(self):
         _, result = self.run_review(self.TOOL_EVENT)

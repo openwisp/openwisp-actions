@@ -1,9 +1,9 @@
 """Print the review's tool calls while it runs.
 
-The events are read from standard input as they are written: commands when
-they start, recorded by the sandbox shell, and tool calls when they end,
-reported by OpenCode. The job log then shows the last command even if the
-runner is lost while it runs.
+The events of one file are read from standard input as they are written:
+commands when they start, recorded by the sandbox shell, or tool calls when
+they end, reported by OpenCode. The job log then shows the last command even
+if the runner is lost while it runs.
 Lines are checked for the provider's credentials like the output of a
 finished review: a line containing one is hidden, and nothing is printed
 when the credentials cannot be read.

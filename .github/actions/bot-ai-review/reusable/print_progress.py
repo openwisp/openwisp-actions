@@ -95,31 +95,32 @@ def save(path, tokens):
 
 
 def main():
-    auth, model, initial, history, pid, starts, events = sys.argv[1:]
+    auth, model, initial, history, pid, *paths = sys.argv[1:]
     # The credentials before the review started, which a refresh may replace.
     known = read_credentials(initial, model) or set()
-    # Read completions before starts: the start of every completion read is
-    # then read in the same pass or an earlier one.
-    files = {path: open(path, "rb") for path in (events, starts)}
+    files = [open(path, "rb") for path in paths]
     # Process only complete lines, which OpenCode may write in parts.
-    partial = {path: b"" for path in files}
-    lines = {}
+    partial = [b""] * len(files)
+    pending = []
     while True:
         # Check before the last read, so events written before the end are printed.
         ended = not running(int(pid))
-        for path, f in files.items():
-            *lines[path], partial[path] = (partial[path] + f.read()).split(b"\n")
+        # Records are written as they happen: those over a second old are in the files.
+        written = time.time() * 1000 - 1000
+        for index, f in enumerate(files):
+            *lines, partial[index] = (partial[index] + f.read()).split(b"\n")
+            pending += filter(None, map(parse, lines))
         # Read the credentials after the events, so they include any token the
         # events can contain. Read them between events too, so a token replaced
         # before the next event is still known.
         tokens = read_credentials(auth, model)
         if tokens is not None:
             known |= tokens
-        batch = [parse(line) for line in lines[starts] + lines[events]]
-        # Print the starts and completions read in one pass in the order they
-        # happened, so the last command started is printed last.
-        for event in sorted(filter(None, batch), key=when):
-            print(show(event, tokens, known), flush=True)
+        # Print the records of both files in the order they happened, holding
+        # each until any earlier record of the other file has been read.
+        pending.sort(key=when)
+        while pending and (ended or when(pending[0]) <= written):
+            print(show(pending.pop(0), tokens, known), flush=True)
         if ended:
             break
         time.sleep(0.2)

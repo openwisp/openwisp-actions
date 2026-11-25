@@ -1,10 +1,11 @@
-"""Test that progress logging survives a credential file being rewritten."""
+"""Test that progress logging stays ordered and survives credential changes."""
 
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 SCRIPT = os.path.join(
@@ -14,30 +15,47 @@ SCRIPT = os.path.join(
 )
 
 
+def write(path, record):
+    with open(path, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def start(command, timestamp=None):
+    record = {"type": "tool_start", "args": ["-c", command]}
+    if timestamp is not None:
+        record["timestamp"] = timestamp
+    return record
+
+
+def completion(command, timestamp):
+    state = {"status": "completed", "input": {"command": command}}
+    part = {"tool": "bash", "state": state}
+    return {"type": "tool_use", "timestamp": timestamp, "part": part}
+
+
 class TestPrintProgress(unittest.TestCase):
-    def test_continues_after_an_incomplete_credential_file(self):
+    def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        auth = os.path.join(directory.name, "auth.json")
-        with open(auth, "w") as f:
-            f.write('{"github-copilot": {"access": "tok')
-        events = os.path.join(directory.name, "events.jsonl")
-        for path in (events, os.path.join(directory.name, "starts.jsonl")):
+        self.root = directory.name
+        self.auth = os.path.join(self.root, "auth.json")
+        self.starts = os.path.join(self.root, "starts.jsonl")
+        self.events = os.path.join(self.root, "events.jsonl")
+        for path in (self.starts, self.events):
             open(path, "w").close()
-        # Stands in for the review: the printer exits when it ends, at the latest
-        # after 30 seconds, so a missing line cannot block the test.
-        review = subprocess.Popen(["sleep", "30"])
+
+    def follow(self, review, model="provider/model"):
         process = subprocess.Popen(
             [
                 sys.executable,
                 SCRIPT,
-                auth,
-                "github-copilot/model",
-                os.path.join(directory.name, "missing-initial-auth.json"),
-                os.path.join(directory.name, "history"),
+                self.auth,
+                model,
+                os.path.join(self.root, "missing-initial-auth.json"),
+                os.path.join(self.root, "history"),
                 str(review.pid),
-                os.path.join(directory.name, "starts.jsonl"),
-                events,
+                self.starts,
+                self.events,
             ],
             stdout=subprocess.PIPE,
             text=True,
@@ -45,26 +63,37 @@ class TestPrintProgress(unittest.TestCase):
         self.addCleanup(process.stdout.close)
         self.addCleanup(process.wait, timeout=10)
         self.addCleanup(process.kill)
+        return process
+
+    def review(self):
+        # Stands in for the review: the printer exits when it ends, at the latest
+        # after 30 seconds, so a missing line cannot block the test.
+        review = subprocess.Popen(["sleep", "30"])
         self.addCleanup(review.wait)
         self.addCleanup(review.kill)
+        return review
 
-        def start(command):
-            with open(events, "a") as f:
-                f.write(json.dumps({"type": "tool_start", "args": ["-c", command]}))
-                f.write("\n")
+    def test_continues_after_an_incomplete_credential_file(self):
+        with open(self.auth, "w") as f:
+            f.write('{"github-copilot": {"access": "tok')
+        review = self.review()
+        process = self.follow(review, model="github-copilot/model")
+
+        def check(command):
+            write(self.events, start(command))
             return process.stdout.readline()
 
         self.assertEqual(
-            start("echo secret-token"),
+            check("echo secret-token"),
             "Tool call hidden: the credentials could not be read\n",
         )
         # Replace the file at once, so the printer cannot read it half written.
-        with open(f"{auth}.new", "w") as f:
+        with open(f"{self.auth}.new", "w") as f:
             json.dump({"github-copilot": {"access": "secret-token"}}, f)
-        os.replace(f"{auth}.new", auth)
-        self.assertEqual(start("./runtests"), "Started: ./runtests\n")
+        os.replace(f"{self.auth}.new", self.auth)
+        self.assertEqual(check("./runtests"), "Started: ./runtests\n")
         self.assertEqual(
-            start("echo secret-token"),
+            check("echo secret-token"),
             "Tool call hidden: it contains a credential\n",
         )
         review.kill()
@@ -72,44 +101,32 @@ class TestPrintProgress(unittest.TestCase):
         self.assertEqual(process.wait(timeout=10), 0)
 
     def test_records_read_in_one_pass_are_printed_in_order(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        starts = os.path.join(directory.name, "starts.jsonl")
-        events = os.path.join(directory.name, "events.jsonl")
-        with open(starts, "w") as f:
-            for timestamp, command in ((1, "./first"), (3, "./second")):
-                record = {"type": "tool_start", "timestamp": timestamp}
-                record["args"] = ["-c", command]
-                f.write(json.dumps(record) + "\n")
-        with open(events, "w") as f:
-            state = {"status": "completed", "input": {"command": "./first"}}
-            event = {"type": "tool_use", "timestamp": 2}
-            event["part"] = {"tool": "bash", "state": state}
-            f.write(json.dumps(event) + "\n")
+        write(self.starts, start("./first", 1))
+        write(self.starts, start("./second", 3))
+        write(self.events, completion("./first", 2))
         # All records are read in one pass, as when commands end quickly.
         review = subprocess.Popen(["true"])
         review.wait()
-        result = subprocess.run(
-            [
-                sys.executable,
-                SCRIPT,
-                os.path.join(directory.name, "auth.json"),
-                "provider/model",
-                os.path.join(directory.name, "initial-auth.json"),
-                os.path.join(directory.name, "history"),
-                str(review.pid),
-                starts,
-                events,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        process = self.follow(review)
         self.assertEqual(
-            result.stdout.splitlines(),
+            process.stdout.read().splitlines(),
             [
                 "Started: ./first",
                 "Tool: bash (completed) ./first",
                 "Started: ./second",
             ],
+        )
+
+    def test_records_read_in_later_passes_are_printed_in_order(self):
+        now = int(time.time() * 1000)
+        write(self.starts, start("./first", now - 3000))
+        # Later than now, so a slow test run cannot print it before the completion.
+        write(self.starts, start("./second", now + 2000))
+        process = self.follow(self.review())
+        self.assertEqual(process.stdout.readline(), "Started: ./first\n")
+        # The completion was read after the start of the next command.
+        write(self.events, completion("./first", now - 2000))
+        self.assertEqual(
+            [process.stdout.readline(), process.stdout.readline()],
+            ["Tool: bash (completed) ./first\n", "Started: ./second\n"],
         )

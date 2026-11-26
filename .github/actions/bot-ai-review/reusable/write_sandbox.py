@@ -23,6 +23,8 @@ class Ruleset(ctypes.Structure):
 
 
 class PathRule(ctypes.Structure):
+    # The Linux UAPI declares this struct packed. ctypes uses this layout with _pack_.
+    _layout_ = "ms"
     _pack_ = 1
     _fields_ = [("allowed_access", ctypes.c_uint64), ("parent_fd", ctypes.c_int32)]
 

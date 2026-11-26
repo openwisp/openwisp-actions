@@ -32,6 +32,7 @@ for path in (outside, root / 'link', outside.parent / 'new-file'):
         [
             sys.executable,
             "-I",
+            "-Werror::DeprecationWarning",
             str(SCRIPT),
             str(writable),
             "--",

@@ -6,9 +6,10 @@ Usage: history.py <directory>
 - Groups inline comments into threads with their resolved state.
 - Removes the prompts that review bots such as CodeRabbit add for AI
   agents, so the reviewer does not mistake them for prompt injection.
-- Leaves out people's comments that only ask CodeRabbit to resolve its
-  threads or run one of its commands. They are for CodeRabbit, not for the
-  review, and the reviewer would mistake them for prompt injection.
+- Leaves out people's comments that are only one of CodeRabbit's commands
+  that cannot approve, such as "run pre-merge checks". They are for
+  CodeRabbit, not for the review. Other requests to CodeRabbit are kept, so
+  the reviewer still checks them.
 """
 
 import json
@@ -36,19 +37,13 @@ DETAILS = re.compile(
 )
 ROBOT_ICON = re.compile(r"\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE}")
 
-# CodeRabbit runs a command only when it is the whole comment. None of these approve.
+# CodeRabbit runs a command only when it is the whole comment. "approve" and
+# "resolve" can approve the pull request, so they are kept for the reviewer.
 COMMAND = re.compile(
-    r"\s*@coderabbitai\s+(?:full review|review|resolve|pause|resume|summary|help"
+    r"\s*@coderabbitai\s+(?:full review|review|pause|resume|summary|help"
     r"|configuration|run pre-merge checks)\s*",
     re.IGNORECASE,
 )
-# A single sentence that asks CodeRabbit to resolve its threads.
-RESOLVE = re.compile(
-    r"\s*@coderabbitai\b[^.!?\n]*\b(?:resolve|mark\b[^.!?\n]*\bas resolved)\b"
-    r"[^.!?\n]*[.!?]?\s*",
-    re.IGNORECASE,
-)
-APPROVE = re.compile(r"\bapprov", re.IGNORECASE)
 
 
 def load(directory, name):
@@ -65,13 +60,10 @@ def author(item):
 
 
 def for_coderabbit(item):
-    body = item.get("body") or ""
     # CodeRabbit mentions itself in its own comments, which contain its findings.
-    # Requests for approval are kept, so the reviewer still checks them for
-    # prompt injection.
-    if (item.get("user") or {}).get("type") == "Bot" or APPROVE.search(body):
+    if (item.get("user") or {}).get("type") == "Bot":
         return False
-    return bool(COMMAND.fullmatch(body) or RESOLVE.fullmatch(body))
+    return bool(COMMAND.fullmatch(item.get("body") or ""))
 
 
 def agent_prompt(match):
@@ -81,8 +73,11 @@ def agent_prompt(match):
 def message(item):
     body = item["body"]
     if (item.get("user") or {}).get("type") == "Bot":
-        body = AGENT_PROMPT.sub("", MARKED_PROMPT.sub("", body))
-        body = DETAILS.sub(agent_prompt, body)
+        body = AGENT_PROMPT.sub("", body)
+    # The markers and the robot icon are CodeRabbit's: other bots can use them
+    # for findings.
+    if author(item) == "coderabbitai[bot]":
+        body = DETAILS.sub(agent_prompt, MARKED_PROMPT.sub("", body))
     return {"author": author(item), "body": body}
 
 

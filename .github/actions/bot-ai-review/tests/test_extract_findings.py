@@ -403,6 +403,33 @@ class TestMain(unittest.TestCase):
         self.assertEqual(result["event"], "comment")
         self.assertEqual(result["comments"], [])
 
+    def test_joins_summary_bullets_written_as_separate_strings(self):
+        # The answer of two security reviews of openwisp-actions#48.
+        output = (
+            '{\n  "verdict": "No issues found",\n'
+            '  "title": "Review-bot requests remain untrusted",\n'
+            '  "summary": "- The change keeps author comments visible.",\n'
+            '  "- The bot-testing-ground test is pending."\n'
+            '  ,"comments": []\n}'
+        )
+        result = self.run_main(output, stage="security-review")
+        self.assertEqual(result["verdict"], "No issues found")
+        self.assertEqual(
+            result["summary"],
+            "- The change keeps author comments visible.\n"
+            "- The bot-testing-ground test is pending.",
+        )
+
+    def test_split_summary_cannot_hide_serious_findings(self):
+        output = (
+            '{"verdict": "No issues found", "title": "T",'
+            ' "summary": "- One.", "- Two.",'
+            ' "comments": [{"file": "app.py", "line": 2, "severity": "P1",'
+            ' "title": "Bug", "body": "Details"}]}'
+        )
+        result = self.run_main(output, stage="security-review")
+        self.assertEqual(result["verdict"], FALLBACK["verdict"])
+
     def test_falls_back_on_wrong_types(self):
         result = self.run_main('{"verdict": [], "title": "T", "summary": "S"}')
         self.assertEqual(result["verdict"], FALLBACK["verdict"])

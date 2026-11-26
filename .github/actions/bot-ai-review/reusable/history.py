@@ -6,10 +6,6 @@ Usage: history.py <directory>
 - Groups inline comments into threads with their resolved state.
 - Removes the prompts that review bots such as CodeRabbit add for AI
   agents, so the reviewer does not mistake them for prompt injection.
-- Leaves out people's comments that are only one of CodeRabbit's commands
-  that cannot approve, such as "run pre-merge checks". They are for
-  CodeRabbit, not for the review. Other requests to CodeRabbit are kept, so
-  the reviewer still checks them.
 """
 
 import json
@@ -27,23 +23,15 @@ MARKED_PROMPT = re.compile(
     r"<!-- ai-agent-prompt:start -->.*?<!-- ai-agent-prompt:end -->", re.DOTALL
 )
 # CodeRabbit renames its other prompts, but gives them a robot icon that its
-# findings do not use. Innermost blocks only, so a block that holds findings
-# and a prompt keeps its findings.
-DETAILS = re.compile(
+# findings do not use. The title cannot cross "</summary>", so a block that
+# holds findings and a prompt keeps its findings.
+ROBOT_PROMPT = re.compile(
     # Blocks in quotes have ">" at the start of each line.
-    r"<details>[\s>]*<summary>((?:(?!</summary>).)*)</summary>"
-    r"((?:(?!<details>|</details>).)*)</details>",
+    r"<details>[\s>]*<summary>(?:(?!</summary>).)*?"
+    r"(?:\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE})(?:(?!</summary>).)*</summary>",
     re.IGNORECASE | re.DOTALL,
 )
-ROBOT_ICON = re.compile(r"\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE}")
-
-# CodeRabbit runs a command only when it is the whole comment. "approve" and
-# "resolve" can approve the pull request, so they are kept for the reviewer.
-COMMAND = re.compile(
-    r"\s*@coderabbitai\s+(?:full review|review|pause|resume|summary|help"
-    r"|configuration|run pre-merge checks)\s*",
-    re.IGNORECASE,
-)
+DETAILS_TAG = re.compile(r"<(/?)details>", re.IGNORECASE)
 
 
 def load(directory, name):
@@ -59,15 +47,19 @@ def author(item):
     return (item.get("user") or {}).get("login")
 
 
-def for_coderabbit(item):
-    # CodeRabbit mentions itself in its own comments, which contain its findings.
-    if (item.get("user") or {}).get("type") == "Bot":
-        return False
-    return bool(COMMAND.fullmatch(item.get("body") or ""))
-
-
-def agent_prompt(match):
-    return "" if ROBOT_ICON.search(match.group(1)) else match.group(0)
+def without_robot_prompts(body):
+    # A prompt can contain example blocks, so remove up to its own closing tag.
+    while match := ROBOT_PROMPT.search(body):
+        depth = 1
+        for tag in DETAILS_TAG.finditer(body, match.end()):
+            depth += -1 if tag.group(1) else 1
+            if not depth:
+                start, end = match.start(), tag.end()
+                body = body[:start] + body[end:]
+                break
+        else:
+            return body
+    return body
 
 
 def message(item):
@@ -77,7 +69,7 @@ def message(item):
     # The markers and the robot icon are CodeRabbit's: other bots can use them
     # for findings.
     if author(item) == "coderabbitai[bot]":
-        body = DETAILS.sub(agent_prompt, MARKED_PROMPT.sub("", body))
+        body = without_robot_prompts(MARKED_PROMPT.sub("", body))
     return {"author": author(item), "body": body}
 
 
@@ -92,9 +84,7 @@ def build(comments, reviews, review_comments, threads):
         root = comment.get("in_reply_to_id") or comment["id"]
         grouped.setdefault(root, []).append(comment)
     return {
-        "comments": [
-            message(comment) for comment in comments if not for_coderabbit(comment)
-        ],
+        "comments": [message(comment) for comment in comments],
         "reviews": [
             {**message(review), "state": review["state"], "commit": review["commit_id"]}
             for review in reviews
@@ -105,9 +95,7 @@ def build(comments, reviews, review_comments, threads):
                 "outdated": states.get(str(root), {}).get("isOutdated"),
                 "path": replies[0]["path"],
                 "line": replies[0]["line"],
-                "comments": [
-                    message(reply) for reply in replies if not for_coderabbit(reply)
-                ],
+                "comments": [message(reply) for reply in replies],
             }
             for root, replies in grouped.items()
         ],

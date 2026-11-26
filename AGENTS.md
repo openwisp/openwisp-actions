@@ -80,6 +80,10 @@ and where to find its tests.
 
 If `README.rst` differs from CI, use `.github/workflows/ci.yml` for verification and report the exact discrepancy. Do not change documentation unless the change caused the divergence or the user explicitly requests it.
 
+## AI Review Bot Shared Guidance
+
+When working on the AI review bot, check the sections it copies from `openwisp-opencode-configs/AGENTS.md` for skill references. If a referenced skill is unavailable to the bot, alert the maintainer, name the section and the missing skill, and recommend importing the skill from the shared configuration.
+
 ## Bot Testing Ground
 
 For pull requests titled with `[change]`, `[feature]`, or `[fix]`, create a

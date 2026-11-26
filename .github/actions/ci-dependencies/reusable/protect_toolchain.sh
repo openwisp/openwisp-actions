@@ -64,6 +64,12 @@ for path in "${path_entries[@]}"; do
     parent=$(dirname "$parent")
   done
   [ "$unsafe" = false ] || continue
+  if ! sudo -n -u reviewer test -x "$path"; then
+    safe_path+=("$path")
+    continue
+  fi
+  # A searchable but unreadable directory cannot be audited reliably.
+  if ! sudo -n -u reviewer test -r "$path"; then continue; fi
   writable=$(sudo -n -u reviewer find -L "$path" -maxdepth 1 -type f -writable -print -quit)
   [ -z "$writable" ] || continue
   case "$(realpath -e "$path")" in

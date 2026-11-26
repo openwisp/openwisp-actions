@@ -13,7 +13,16 @@ SCRIPT = ROOT / "ci-dependencies" / "reusable" / "protect_toolchain.sh"
 
 @pytest.mark.parametrize(
     "unsafe",
-    ["", "directory", "executable", "owner", "protected", "runtime"],
+    [
+        "",
+        "directory",
+        "executable",
+        "owner",
+        "protected",
+        "runtime",
+        "unreadable",
+        "inaccessible",
+    ],
 )
 def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
     cache = tmp_path / "cache"
@@ -36,7 +45,12 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         "args = sys.argv[1:]\n"
         "if args[:3] == ['-n', '-u', 'reviewer']:\n"
         "    args = args[3:]\n"
-        "    if args[:2] == ['test', '-x']: sys.exit(0)\n"
+        "    if args[:2] == ['test', '-x']: "
+        "sys.exit(1 if args[-1] == os.environ.get('UNSAFE_PATH') "
+        "and os.environ['UNSAFE_KIND'] == 'inaccessible' else 0)\n"
+        "    if args[:2] == ['test', '-r']: "
+        "sys.exit(1 if args[-1] == os.environ.get('UNSAFE_PATH') "
+        "and os.environ['UNSAFE_KIND'] == 'unreadable' else 0)\n"
         "    if args[0] == 'test':\n"
         "        unsafe = args[-1] == os.environ.get('UNSAFE_PATH') "
         "and os.environ['UNSAFE_KIND'] == 'directory'\n"
@@ -61,7 +75,11 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         "RUNNER_TEMP": str(runner_temp),
         "GITHUB_WORKSPACE": str(workspace),
         "HOME": str(home),
-        "UNSAFE_PATH": str(bins) if unsafe in ("directory", "executable") else "",
+        "UNSAFE_PATH": (
+            str(bins)
+            if unsafe in ("directory", "executable", "unreadable", "inaccessible")
+            else ""
+        ),
         "UNSAFE_KIND": unsafe,
     }
     result = subprocess.run(
@@ -80,9 +98,11 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         assert not ((directory / "file").stat().st_mode & 0o022)
     if unsafe in ("owner", "protected", "runtime"):
         assert "reviewer" in result.stderr.lower()
-    if unsafe in ("directory", "executable"):
+    if unsafe in ("directory", "executable", "unreadable"):
         assert str(bins) not in result.stdout.strip().split(":")
         assert "/usr/bin" in result.stdout.strip().split(":")
+    if unsafe == "inaccessible":
+        assert str(bins) in result.stdout.strip().split(":")
 
 
 def test_toolchain_is_protected_before_installing_dependencies():

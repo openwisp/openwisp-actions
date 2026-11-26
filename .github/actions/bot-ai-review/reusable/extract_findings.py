@@ -66,7 +66,11 @@ def decode(text):
 
 
 def join_summary(match):
-    bullets = json.loads(f"[{match.group(2)}]", strict=False)
+    try:
+        bullets = json.loads(f"[{match.group(2)}]", strict=False)
+    except json.JSONDecodeError:
+        # The answer stays invalid, so the fallback review is published.
+        return match.group(0)
     return match.group(1) + json.dumps("\n".join(bullets))
 
 

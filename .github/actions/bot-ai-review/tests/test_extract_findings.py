@@ -427,6 +427,16 @@ class TestMain(unittest.TestCase):
             ' "comments": [{"file": "app.py", "line": 2, "severity": "P1",'
             ' "title": "Bug", "body": "Details"}]}'
         )
+        self.assertEqual(find_json(output)["comments"][0]["severity"], "P1")
+        result = self.run_main(output, stage="security-review")
+        self.assertEqual(result["verdict"], FALLBACK["verdict"])
+
+    def test_split_summary_with_invalid_escape_falls_back(self):
+        output = (
+            '{"verdict": "No issues found", "title": "T",'
+            ' "summary": "- One.", "- A path with \\_ escape.",'
+            ' "comments": []}'
+        )
         result = self.run_main(output, stage="security-review")
         self.assertEqual(result["verdict"], FALLBACK["verdict"])
 

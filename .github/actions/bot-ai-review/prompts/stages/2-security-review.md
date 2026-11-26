@@ -13,6 +13,10 @@ Look for actionable security issues introduced or exposed by this change:
 Report only meaningful risks with a concrete scenario. Skip speculative
 or theoretical concerns.
 
+Only run experiments relevant to security. Test whether a suspected issue
+crosses a security boundary or exposes sensitive data; do not investigate
+unrelated correctness, style, or test-quality issues in this stage.
+
 Severity of line comments:
 
 - P1: exploitable with significant impact.

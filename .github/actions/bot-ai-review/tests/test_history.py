@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -237,6 +238,19 @@ class TestMessage(unittest.TestCase):
         self.assertEqual(
             message({"user": bot, "body": body})["body"],
             "Finding.\n\nMore findings.",
+        )
+
+    def test_long_unmatched_backticks_finish_prompt_filtering(self):
+        code = (
+            "from history import message; "
+            "message({'user': {'login': 'coderabbitai[bot]'}, "
+            "'body': 'Example: ' + '`' * 1500})"
+        )
+        subprocess.run(
+            [sys.executable, "-c", code],
+            env={**os.environ, "PYTHONPATH": SCRIPTS},
+            check=True,
+            timeout=3,
         )
 
     def test_keeps_agent_prompts_written_by_people(self):

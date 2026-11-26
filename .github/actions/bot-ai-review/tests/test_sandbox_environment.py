@@ -18,9 +18,11 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
     sudo.write_text(
         "#!/usr/bin/env python3\n"
         "import os, sys\n"
-        "args = sys.argv[sys.argv.index('--', sys.argv.index('review-namespace')) + 1:]\n"
-        "args = args[:1] + ['-i'] + args[1:args.index('/bin/bash')] + ['/usr/bin/env']\n"
-        "os.execv(args[0], args)\n"
+        "args = sys.argv[sys.argv.index('--') + 1:]\n"
+        "prefix = args[:args.index('/usr/bin/unshare')]\n"
+        "review = args[args.index('--', args.index('review-namespace')) + 1:]\n"
+        "command = prefix + review[:review.index('/bin/bash')] + ['/usr/bin/env']\n"
+        "os.execv(command[0], command)\n"
     )
     sudo.chmod(0o755)
     env = {

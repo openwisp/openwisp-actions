@@ -50,9 +50,6 @@ jobs:
         id: deps
         run: ./install-ci-deps.sh
 
-      - name: Install Prettier
-        run: sudo npm install -g prettier@3.9.4
-
       - name: Run QA checks
         run: ./run-qa-checks
 

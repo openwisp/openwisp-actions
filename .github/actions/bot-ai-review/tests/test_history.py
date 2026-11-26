@@ -171,6 +171,32 @@ class TestMessage(unittest.TestCase):
         )
         self.assertEqual(message({"user": bot, "body": body})["body"], "Finding.\n")
 
+    def test_preserves_findings_after_prompt_with_opening_tag_example(self):
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        body = (
+            "<details><summary>Minor comments</summary>First finding.\n"
+            "<details><summary>🤖 Prompt to fix issue</summary>\n"
+            "Add an opening tag: `<details>`.\n</details>\n"
+            "Critical second finding.</details>"
+        )
+        self.assertEqual(
+            message({"user": bot, "body": body})["body"],
+            "<details><summary>Minor comments</summary>First finding.\n"
+            "\nCritical second finding.</details>",
+        )
+
+    def test_removes_legacy_prompt_with_details_example(self):
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        body = (
+            "Finding.\n<details><summary>🤖 Prompt for AI Agents</summary>\n"
+            "Update markup: <details>example</details>\n"
+            "Then run coderabbit review --agent.\n</details>\nMore findings."
+        )
+        self.assertEqual(
+            message({"user": bot, "body": body})["body"],
+            "Finding.\n\nMore findings.",
+        )
+
     def test_keeps_agent_prompts_written_by_people(self):
         body = f"Please check.\n\n{AGENT_BLOCK}"
         person = {"login": "contributor", "type": "User"}

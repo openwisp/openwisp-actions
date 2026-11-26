@@ -25,13 +25,18 @@ MARKED_PROMPT = re.compile(
 # CodeRabbit renames its other prompts, but gives them a robot icon that its
 # findings do not use. The title cannot cross "</summary>", so a block that
 # holds findings and a prompt keeps its findings.
-ROBOT_PROMPT = re.compile(
+CODERABBIT_PROMPT = re.compile(
     # Blocks in quotes have ">" at the start of each line.
-    r"<details>[\s>]*<summary>(?:(?!</summary>).)*?"
-    r"(?:\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE})(?:(?!</summary>).)*</summary>",
+    r"<details>[\s>]*<summary>(?:"
+    r"(?:(?!</summary>).)*?(?:\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE})(?:(?!</summary>).)*"
+    r"|(?:<[^>]*>|[^\w<])*Prompt for (?:all review comments with )?AI agents\s*"
+    r")</summary>",
     re.IGNORECASE | re.DOTALL,
 )
-DETAILS_TAG = re.compile(r"<(/?)details>", re.IGNORECASE)
+# Tags shown as examples in code do not open or close blocks.
+DETAILS_TAG = re.compile(
+    r"```.*?```|`[^`\n]*`|<(/?)details>", re.IGNORECASE | re.DOTALL
+)
 
 
 def load(directory, name):
@@ -47,11 +52,13 @@ def author(item):
     return (item.get("user") or {}).get("login")
 
 
-def without_robot_prompts(body):
+def without_prompts(body):
     # A prompt can contain example blocks, so remove up to its own closing tag.
-    while match := ROBOT_PROMPT.search(body):
+    while match := CODERABBIT_PROMPT.search(body):
         depth = 1
         for tag in DETAILS_TAG.finditer(body, match.end()):
+            if tag.group(1) is None:
+                continue
             depth += -1 if tag.group(1) else 1
             if not depth:
                 start, end = match.start(), tag.end()
@@ -64,12 +71,12 @@ def without_robot_prompts(body):
 
 def message(item):
     body = item["body"]
-    if (item.get("user") or {}).get("type") == "Bot":
-        body = AGENT_PROMPT.sub("", body)
     # The markers and the robot icon are CodeRabbit's: other bots can use them
     # for findings.
     if author(item) == "coderabbitai[bot]":
-        body = without_robot_prompts(MARKED_PROMPT.sub("", body))
+        body = without_prompts(MARKED_PROMPT.sub("", body))
+    elif (item.get("user") or {}).get("type") == "Bot":
+        body = AGENT_PROMPT.sub("", body)
     return {"author": author(item), "body": body}
 
 

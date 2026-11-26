@@ -237,7 +237,14 @@ jobs:
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/verify_pull_request.sh
 
       - name: Fetch pull request as data
+        # Keep credentials in this step, not in Git config accessible to the sandbox.
         env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ""
+          GIT_CONFIG_KEY_1: credential.helper
+          GIT_CONFIG_VALUE_1: "!gh auth git-credential"
           PR_NUMBER: ${{ github.event.issue.number }}
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
           BASE_SHA: ${{ needs.gate.outputs.base_sha }}
@@ -496,6 +503,19 @@ jobs:
       - name: Install Crit
         if: steps.comments.outputs.present == 'true'
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/install_crit.sh
+
+      - name: Fetch pull request for publication
+        # The workflow token can read private repositories without requiring
+        # existing App installations to grant an additional Contents permission.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_CONFIG_COUNT: "2"
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: ""
+          GIT_CONFIG_KEY_1: credential.helper
+          GIT_CONFIG_VALUE_1: "!gh auth git-credential"
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
 
       - name: Generate write app token
         id: app-token

@@ -15,15 +15,21 @@ HEAD_SHA = "a" * 40
 REVIEWS = [
     {
         "id": 1,
-        "user": {"type": "Bot"},
+        "user": {"type": "Bot", "login": "openwisp-companion[bot]"},
         "body": "AI review of old provided by `p` / `m`",
         "state": "CHANGES_REQUESTED",
     },
     {
         "id": 2,
-        "user": {"type": "Bot"},
+        "user": {"type": "Bot", "login": "openwisp-companion[bot]"},
         "body": "AI review of new provided by `p` / `m`",
         "state": "COMMENTED",
+    },
+    {
+        "id": 0,
+        "user": {"type": "Bot", "login": "another[bot]"},
+        "body": "AI review of old provided by `p` / `m`",
+        "state": "CHANGES_REQUESTED",
     },
 ]
 FAKE_GH = """#!/usr/bin/env bash
@@ -33,7 +39,8 @@ case "$*" in
   *"--jq .state"*) echo "${REMOTE_STATE:-open}" ;;
   *"--jq .base.ref"*) echo "${REMOTE_BASE:-master}" ;;
   *"issues/comments/9 --jq .user.id"*) echo 42 ;;
-  "api --paginate "*) cat "$STATE/reviews.json" ;;
+  *"/dismissals"*) if [ "${FAIL_DISMISS:-}" = 1 ]; then echo 'dismissal denied' >&2; exit 1; fi ;;
+  "api --paginate "*) if [ "${FAIL_LIST:-}" = 1 ]; then exit 1; fi; cat "$STATE/reviews.json" ;;
   "api -X POST "*) cat >"$STATE/review.json" ;;
 esac
 """
@@ -73,6 +80,8 @@ def publish(
     remote_base="master",
     capture_output=False,
     lookup_user_id=42,
+    fail_dismiss=False,
+    fail_list=False,
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
@@ -118,6 +127,8 @@ def publish(
             "CI_STANDARD_STATUS": ci_standard_status,
             "CI_STANDARD_MISSING": ci_standard_missing,
             "FAIL_PUSH": str(int(fail_push)),
+            "FAIL_DISMISS": str(int(fail_dismiss)),
+            "FAIL_LIST": str(int(fail_list)),
             "STAGE": stage,
             "MODEL": "provider/model",
             "GITHUB_RUN_ID": "123",
@@ -126,6 +137,16 @@ def publish(
             "RECORD_ID": "9",
         }
         result = subprocess.run(["bash", SCRIPT], env=env, capture_output=True)
+        if fail_dismiss:
+            assert (
+                b"Published the review, but could not dismiss earlier review 1"
+                in result.stdout
+            )
+        if fail_list:
+            assert (
+                b"Published the review, but could not list earlier reviews"
+                in result.stdout
+            )
         with open(os.path.join(state, "log")) as f:
             log = f.read().splitlines()
         review = os.path.join(state, "review.json")
@@ -330,6 +351,21 @@ class TestPublish(unittest.TestCase):
             APPROVED, comments=(), ci_aware=True, capture_output=True, lookup_user_id=43
         )
         self.assertEqual(output, "")
+
+    def test_dismissal_failure_does_not_report_publication_failure(self):
+        log, review = publish(APPROVED, comments=(), fail_dismiss=True)
+        self.assertEqual(review["event"], "APPROVE")
+        self.assertEqual(len(dismissals(log)), 1)
+
+    def test_review_listing_failure_does_not_report_publication_failure(self):
+        log, review = publish(APPROVED, comments=(), fail_list=True)
+        self.assertEqual(review["event"], "APPROVE")
+        self.assertEqual(dismissals(log), [])
+
+    def test_publication_uses_prefetched_commit(self):
+        log, _ = publish(APPROVED, comments=())
+        self.assertTrue(any(line.startswith("git checkout ") for line in log))
+        self.assertFalse(any(line.startswith("git fetch ") for line in log))
 
 
 if __name__ == "__main__":

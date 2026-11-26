@@ -14,8 +14,8 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
     sudo.write_text(
         "#!/usr/bin/env python3\n"
         "import os, sys\n"
-        "args = sys.argv[sys.argv.index('/usr/bin/env'):]\n"
-        "args = args[:args.index('/bin/bash')] + ['/usr/bin/env']\n"
+        "args = sys.argv[sys.argv.index('--', sys.argv.index('/usr/bin/env')) + 1:]\n"
+        "args = args[:1] + ['-i'] + args[1:args.index('/bin/bash')] + ['/usr/bin/env']\n"
         "os.execv(args[0], args)\n"
     )
     sudo.chmod(0o755)
@@ -28,7 +28,6 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
         "SE_CHROME": "/opt/chrome/chrome",
         "SE_CHROMEDRIVER": "/opt/chrome/chromedriver",
         "GECKO_BIN": "/usr/bin/firefox",
-        "AI_REVIEW_SANDBOX_PATH": "/opt/reviewer-tools/bin:/usr/bin",
     }
     result = subprocess.run(
         [str(SCRIPT), "-c", "true"], env=env, capture_output=True, text=True
@@ -36,10 +35,7 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
     assert result.returncode == 0, result.stderr
     environment = dict(line.split("=", 1) for line in result.stdout.splitlines())
     assert environment["HOME"] == "/home/reviewer"
-    assert (
-        environment["PATH"]
-        == "/home/reviewer/.local/bin:/opt/reviewer-tools/bin:/usr/bin"
-    )
+    assert environment["PATH"] == f"/home/reviewer/.local/bin:{env['PATH']}"
     assert environment["XDG_CONFIG_HOME"] == "/home/reviewer/.config"
     assert environment["CHROME_BIN"] == "/opt/chrome/chrome"
     assert environment["SE_CHROMEDRIVER"] == "/opt/chrome/chromedriver"
@@ -131,7 +127,8 @@ def test_review_commands_use_installer_virtualenv(tmp_path):
         "args = [arg.replace('/home/reviewer', os.environ['TEST_HOME'])"
         ".replace('/tmp/ai-review/run', os.environ['TEST_RUN'])"
         ".replace('/tmp/ai-review/pr', os.environ['TEST_PR'])"
-        ".replace('/usr/local/bin/ai-review-sync', os.environ['TEST_SYNC']) for arg in args]\n"
+        ".replace('/usr/local/bin/ai-review-sync', os.environ['TEST_SYNC'])"
+        ".replace('/usr/local/lib/ai-review-write-sandbox.py', os.environ['TEST_SANDBOX']) for arg in args]\n"
         "os.execv(args[0], args)\n"
     )
     sudo.chmod(0o755)
@@ -142,6 +139,7 @@ def test_review_commands_use_installer_virtualenv(tmp_path):
         "TEST_RUN": str(run),
         "TEST_PR": str(pr),
         "TEST_SYNC": str(sync),
+        "TEST_SANDBOX": str(SCRIPT.with_name("write_sandbox.py")),
     }
     result = subprocess.run(
         [

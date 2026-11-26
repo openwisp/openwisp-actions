@@ -4,7 +4,6 @@ set -euo pipefail
 
 RUN=${1:-/tmp/ai-review/run}
 REVIEW_HOME=${2:-/home/reviewer}
-DIR=$(dirname "$(realpath "$0")")
 INSTALLER_ENV=$(jq -ce 'if type == "object" and all(to_entries[];
   (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and
   (.value | type == "string" and (contains("\u0000") | not)))
@@ -42,15 +41,24 @@ if [ -d "$HOME/.cache/ci-deps" ]; then
   sudo cp -a "$HOME/.cache/ci-deps" "$REVIEW_HOME/.cache/"
   sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache/ci-deps"
 fi
-# The system phase may have changed runner files. Protect them before reviewer code runs.
-SAFE_PATH=$(bash "$DIR/protect_toolchain.sh")
-if [ -n "${GITHUB_OUTPUT:-}" ]; then
-  printf 'safe_path=%s\nsandbox_path=%s\n' "$SAFE_PATH" "$PATH" >> "$GITHUB_OUTPUT"
-fi
 cd "$RUN"
-sudo -n -H -u reviewer env -i "${MATRIX_ENV[@]}" HOME="$REVIEW_HOME" USER=reviewer LOGNAME=reviewer CI=true \
+# Keep installer output out of the Actions command channel, even on failure.
+output=$(mktemp "${RUNNER_TEMP:?}/installer.XXXXXXXX")
+trap 'rm -f -- "$output"' EXIT
+stop=$(openssl rand -hex 16)
+status=0
+# The runner, not the reviewer, must own the captured log.
+# shellcheck disable=SC2024
+sudo -n -H -u reviewer /usr/bin/env -i /usr/bin/python3 -I /usr/local/lib/ai-review-write-sandbox.py \
+  "$REVIEW_HOME" "$RUN" -- /usr/bin/env "${MATRIX_ENV[@]}" \
+  HOME="$REVIEW_HOME" USER=reviewer LOGNAME=reviewer CI=true \
   PATH="$PATH" DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \
+  TMPDIR="$REVIEW_HOME/.cache/ai-review-tmp" \
   CI_SYSTEM_DEPS_READY="$SYSTEM_DEPS_READY" \
   CI_DEPS_CACHE="$REVIEW_HOME/.cache/ci-deps" \
   YARN_CACHE_FOLDER="$REVIEW_HOME/.cache/yarn" \
-  bash ./install-ci-deps.sh
+  /bin/bash ./install-ci-deps.sh </dev/null >"$output" 2>&1 || status=$?
+printf '::stop-commands::%s\n' "$stop"
+cat -- "$output"
+printf '\n::%s::\n' "$stop"
+exit "$status"

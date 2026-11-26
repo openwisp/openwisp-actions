@@ -550,6 +550,12 @@ If a ``django-version`` axis is present, it takes precedence over a
 virtual environment at the repository root as ``.venv``. Review commands
 use its Python and installed dependencies.
 
+The unprivileged installer and review commands require Linux Landlock ABI
+3 or newer. The workflow refuses to start either process if it cannot
+restrict file writes to the reviewer home and working copy. Use ``TMPDIR``
+for scratch files. The runner's toolchain stays available on ``PATH`` but
+is not writable by these processes.
+
 For privileged host dependencies, set ``AI_REVIEW_SYSTEM_DEPS: "true"`` in
 the test job environment and follow the `installer phase contract
 <.github/actions/ci-dependencies/reusable/prepare_review.sh>`_. Additional

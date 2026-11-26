@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 PREPARE = ROOT / "ci-dependencies" / "reusable" / "prepare_review.sh"
 SYNC = ROOT / "bot-ai-review" / "reusable" / "sync_copy.sh"
+SANDBOX = SYNC.with_name("write_sandbox.py")
 
 
 @pytest.mark.parametrize(
@@ -30,10 +31,9 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
     run = tmp_path / "run"
     home = tmp_path / "reviewer"
     runner_home = tmp_path / "runner"
-    tool_cache = tmp_path / "tool-cache"
     runner_temp = tmp_path / "runner-temp"
     bins = tmp_path / "bin"
-    for directory in (base, pr, run, home, runner_home, tool_cache, runner_temp, bins):
+    for directory in (base, pr, run, home, runner_home, runner_temp, bins):
         directory.mkdir()
     pip_cache = runner_home / ".cache" / "pip"
     pip_cache.mkdir(parents=True)
@@ -50,10 +50,12 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         '#!/bin/bash\nif [ "${CI_SYSTEM_DEPS_ONLY:-0}" = 1 ]; then\n'
         '  printf "%s:%s:%s:%s:%s" "$(cat feature.py)" "${SECRET_SENTINEL-unset}" '
         '"${CI-unset}" "${DISTRO-unset}" "${DJANGO_VERSION-unset}" > system.txt\n'
-        'else\n  printf "%s:%s:%s:%s:%s:%s:%s" "$(cat feature.py)" '
+        'else\n  if ( : > "${HOME}/../runner/marker" ) 2>/dev/null; then exit 99; fi\n'
+        '  printf "%s:%s:%s:%s:%s:%s:%s" "$(cat feature.py)" '
         '"${SECRET_SENTINEL-unset}" "${CI_QA-unset}" '
         '"${CI_SYSTEM_DEPS_READY:-0}" "${CI-unset}" "${DISTRO-unset}" '
         '"${DJANGO_VERSION-unset}" > installed.txt\nfi\n'
+        'printf "installer finished\\n"\n'
     )
     (pr / "feature.py").write_text("pull request")
     sudo = bins / "sudo"
@@ -63,11 +65,8 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         "args = sys.argv[1:]\n"
         "if args[:2] == ['-u', 'reviewer']: args = args[2:]\n"
         "if args[:4] == ['-n', '-H', '-u', 'reviewer']: args = args[4:]\n"
-        "if args[:3] == ['-n', '-u', 'reviewer']:\n"
-        "    args = args[3:]\n"
-        "    if args[0] == 'test': sys.exit(1)\n"
-        "    if args[0] == 'find': sys.exit(0)\n"
-        "if args[0] == 'find' and '-user' in args: sys.exit(0)\n"
+        "args = [os.environ['TEST_SANDBOX'] if arg == "
+        "'/usr/local/lib/ai-review-write-sandbox.py' else arg for arg in args]\n"
         "if args[0] == 'chown': sys.exit(0)\n"
         "if args[0] == 'rsync' and not args[-1].startswith("
         "os.path.dirname(os.environ['GITHUB_WORKSPACE'])): sys.exit(7)\n"
@@ -82,8 +81,7 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         "PATH": f"{bins}:/usr/bin:/bin",
         "HOME": str(runner_home),
         "GITHUB_WORKSPACE": str(base),
-        "GITHUB_OUTPUT": str(tmp_path / "output"),
-        "RUNNER_TOOL_CACHE": str(tool_cache),
+        "TEST_SANDBOX": str(SANDBOX),
         "RUNNER_TEMP": str(runner_temp),
         "YARN_CACHE_DIR": str(yarn_cache),
         "CI_QA": "1",
@@ -95,15 +93,22 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         "SYSTEM_DEPS_ENABLED": str(system_deps).lower(),
         "SECRET_SENTINEL": "private",
     }
-    subprocess.run(
+    result = subprocess.run(
         ["bash", str(PREPARE), str(run), str(home)],
         env=env,
         check=True,
         capture_output=True,
+        text=True,
     )
-    outputs = (tmp_path / "output").read_text().splitlines()
-    assert f"safe_path={bins}:/usr/bin:/bin" in outputs
-    assert f"sandbox_path={bins}:/usr/bin:/bin" in outputs
+    assert not (runner_home / "marker").exists()
+    lines = result.stdout.splitlines()
+    start = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("::stop-commands::")
+    )
+    assert lines[start + 1] == "installer finished"
+    assert lines[-1] == f"::{lines[start].removeprefix('::stop-commands::')}::"
     django_version = configured_django or "django~=5.2"
     assert (
         run / "installed.txt"

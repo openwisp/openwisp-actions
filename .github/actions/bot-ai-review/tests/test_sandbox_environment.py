@@ -28,6 +28,7 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
         "SE_CHROME": "/opt/chrome/chrome",
         "SE_CHROMEDRIVER": "/opt/chrome/chromedriver",
         "GECKO_BIN": "/usr/bin/firefox",
+        "AI_REVIEW_SANDBOX_PATH": "/opt/reviewer-tools/bin:/usr/bin",
     }
     result = subprocess.run(
         [str(SCRIPT), "-c", "true"], env=env, capture_output=True, text=True
@@ -35,6 +36,10 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
     assert result.returncode == 0, result.stderr
     environment = dict(line.split("=", 1) for line in result.stdout.splitlines())
     assert environment["HOME"] == "/home/reviewer"
+    assert (
+        environment["PATH"]
+        == "/home/reviewer/.local/bin:/opt/reviewer-tools/bin:/usr/bin"
+    )
     assert environment["XDG_CONFIG_HOME"] == "/home/reviewer/.config"
     assert environment["CHROME_BIN"] == "/opt/chrome/chrome"
     assert environment["SE_CHROMEDRIVER"] == "/opt/chrome/chromedriver"

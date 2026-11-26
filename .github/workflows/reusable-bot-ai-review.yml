@@ -275,6 +275,10 @@ jobs:
       - name: Prepare sandbox user
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/prepare_sandbox.sh
 
+      - name: Record runner PATH
+        id: runner-path
+        run: echo "path=$PATH" >> "$GITHUB_OUTPUT"
+
       - name: Detect standardized CI
         if: ${{ hashFiles('install-ci-deps.sh') != '' }}
         id: ci-detect
@@ -407,6 +411,7 @@ jobs:
 
       - name: Install trusted CI dependencies
         if: steps.ci.outcome == 'success'
+        id: ci-prepare
         env:
           DJANGO_VERSION: ${{ steps.ci.outputs.django_version }}
           YARN_CACHE_DIR: ${{ steps.yarn-cache-dir-path.outputs.dir }}
@@ -418,11 +423,15 @@ jobs:
       - name: Configure provider credentials
         if: vars.OPENCODE_PROVIDER == 'github-copilot'
         env:
+          PATH: ${{ steps.ci-prepare.outputs.safe_path || steps.runner-path.outputs.path }}
           OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH }}
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/configure_credentials.sh
 
       - name: Fetch pull request discussion
         env:
+          PATH: ${{ steps.ci-prepare.outputs.safe_path || steps.runner-path.outputs.path }}
+          PYTHONNOUSERSITE: "1"
+          PYTHONPATH: ""
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
           NAME: ${{ github.event.repository.name }}
@@ -431,6 +440,10 @@ jobs:
 
       - name: Run review
         env:
+          PATH: ${{ steps.ci-prepare.outputs.safe_path || steps.runner-path.outputs.path }}
+          PYTHONNOUSERSITE: "1"
+          PYTHONPATH: ""
+          AI_REVIEW_SANDBOX_PATH: ${{ steps.ci-prepare.outputs.sandbox_path }}
           MODEL: ${{ needs.gate.outputs.model }}
           STAGE: ${{ needs.gate.outputs.stage }}
           EFFORT: ${{ needs.gate.outputs.effort }}

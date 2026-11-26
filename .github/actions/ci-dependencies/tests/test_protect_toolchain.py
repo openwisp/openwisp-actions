@@ -13,14 +13,15 @@ SCRIPT = ROOT / "ci-dependencies" / "reusable" / "protect_toolchain.sh"
 
 @pytest.mark.parametrize(
     "unsafe",
-    ["", "directory", "executable", "owner", "protected", "runtime", "fixable"],
+    ["", "directory", "executable", "owner", "protected", "runtime"],
 )
 def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
     cache = tmp_path / "cache"
     workspace = tmp_path / "workspace"
     runner_temp = tmp_path / "runner-temp"
+    home = tmp_path / "home"
     bins = tmp_path / "bin"
-    for directory in (cache, workspace, runner_temp, bins):
+    for directory in (cache, workspace, runner_temp, home, bins):
         directory.mkdir()
     runtime_bin = cache / "runtime" / "bin"
     runtime_bin.mkdir(parents=True)
@@ -29,8 +30,6 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         (directory / "file").chmod(0o666)
         directory.chmod(0o777)
     sudo = bins / "sudo"
-    if unsafe == "fixable":
-        bins.chmod(0o777)
     sudo.write_text(
         "#!/usr/bin/env python3\n"
         "import os, sys\n"
@@ -39,12 +38,12 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         "    args = args[3:]\n"
         "    if args[:2] == ['test', '-x']: sys.exit(0)\n"
         "    if args[0] == 'test':\n"
-        "        unsafe = args[-1] == os.environ.get('UNSAFE_PATH')\n"
-        "        if unsafe and os.environ['UNSAFE_KIND'] == 'fixable':\n"
-        "            unsafe = bool(os.stat(args[-1]).st_mode & 0o022)\n"
+        "        unsafe = args[-1] == os.environ.get('UNSAFE_PATH') "
+        "and os.environ['UNSAFE_KIND'] == 'directory'\n"
         "        sys.exit(0 if unsafe else 1)\n"
         "    if args[0] == 'find':\n"
-        "        if '-maxdepth' in args and os.environ['UNSAFE_KIND'] == 'executable': print('writable')\n"
+        "        if '-maxdepth' in args and args[2] == os.environ.get('UNSAFE_PATH') "
+        "and os.environ['UNSAFE_KIND'] == 'executable': print('writable')\n"
         "        if '-maxdepth' not in args and os.environ['UNSAFE_KIND'] == 'protected': print('writable')\n"
         "        if '-L' in args and '-maxdepth' not in args "
         "and os.environ['UNSAFE_KIND'] == 'runtime': print('writable')\n"
@@ -61,13 +60,16 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
         "RUNNER_TOOL_CACHE": str(cache),
         "RUNNER_TEMP": str(runner_temp),
         "GITHUB_WORKSPACE": str(workspace),
-        "UNSAFE_PATH": str(bins) if unsafe in ("directory", "fixable") else "",
+        "HOME": str(home),
+        "UNSAFE_PATH": str(bins) if unsafe in ("directory", "executable") else "",
         "UNSAFE_KIND": unsafe,
     }
     result = subprocess.run(
         ["bash", str(SCRIPT)], env=env, capture_output=True, text=True
     )
-    assert result.returncode == int(bool(unsafe) and unsafe != "fixable"), result.stderr
+    assert result.returncode == int(
+        unsafe in ("owner", "protected", "runtime")
+    ), result.stderr
     directories = (
         (cache,)
         if unsafe in ("owner", "protected")
@@ -76,10 +78,11 @@ def test_protects_runner_files_and_rejects_writable_path(tmp_path, unsafe):
     for directory in directories:
         assert not (directory.stat().st_mode & 0o022)
         assert not ((directory / "file").stat().st_mode & 0o022)
-    if unsafe and unsafe != "fixable":
+    if unsafe in ("owner", "protected", "runtime"):
         assert "reviewer" in result.stderr.lower()
-    if unsafe == "fixable":
-        assert not (bins.stat().st_mode & 0o022)
+    if unsafe in ("directory", "executable"):
+        assert str(bins) not in result.stdout.strip().split(":")
+        assert "/usr/bin" in result.stdout.strip().split(":")
 
 
 def test_toolchain_is_protected_before_installing_dependencies():
@@ -92,3 +95,10 @@ def test_toolchain_is_protected_before_installing_dependencies():
     assert names.index("Install trusted CI dependencies") < names.index(
         "Configure provider credentials"
     )
+    steps_by_name = {step.get("name"): step for step in steps}
+    for name in (
+        "Configure provider credentials",
+        "Fetch pull request discussion",
+        "Run review",
+    ):
+        assert "safe_path" in steps_by_name[name]["env"]["PATH"]

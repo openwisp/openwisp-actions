@@ -82,6 +82,7 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         "PATH": f"{bins}:/usr/bin:/bin",
         "HOME": str(runner_home),
         "GITHUB_WORKSPACE": str(base),
+        "GITHUB_OUTPUT": str(tmp_path / "output"),
         "RUNNER_TOOL_CACHE": str(tool_cache),
         "RUNNER_TEMP": str(runner_temp),
         "YARN_CACHE_DIR": str(yarn_cache),
@@ -100,6 +101,9 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         check=True,
         capture_output=True,
     )
+    outputs = (tmp_path / "output").read_text().splitlines()
+    assert f"safe_path={bins}:/usr/bin:/bin" in outputs
+    assert f"sandbox_path={bins}:/usr/bin:/bin" in outputs
     django_version = configured_django or "django~=5.2"
     assert (
         run / "installed.txt"

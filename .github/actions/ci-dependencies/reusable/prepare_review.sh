@@ -43,7 +43,10 @@ if [ -d "$HOME/.cache/ci-deps" ]; then
   sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache/ci-deps"
 fi
 # The system phase may have changed runner files. Protect them before reviewer code runs.
-bash "$DIR/protect_toolchain.sh"
+SAFE_PATH=$(bash "$DIR/protect_toolchain.sh")
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  printf 'safe_path=%s\nsandbox_path=%s\n' "$SAFE_PATH" "$PATH" >> "$GITHUB_OUTPUT"
+fi
 cd "$RUN"
 sudo -n -H -u reviewer env -i "${MATRIX_ENV[@]}" HOME="$REVIEW_HOME" USER=reviewer LOGNAME=reviewer CI=true \
   PATH="$PATH" DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \

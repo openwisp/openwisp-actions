@@ -18,24 +18,26 @@ AGENT_PROMPT = re.compile(
     r"Prompt for (?:all review comments with )?AI agents\s*</summary>.*?</details>",
     re.IGNORECASE | re.DOTALL,
 )
-# CodeRabbit marks some of its prompts for AI agents.
-MARKED_PROMPT = re.compile(
-    r"<!-- ai-agent-prompt:start -->.*?<!-- ai-agent-prompt:end -->", re.DOTALL
+# Read CodeRabbit's comments as Markdown, so that markup shown in code is
+# not mistaken for real blocks.
+TOKEN = re.compile(
+    # Fenced code ends at a fence at least as long, or at the end of the comment.
+    # Lines in quotes start with ">".
+    r"(?P<fenced>^[ \t>]*(?P<fence>`{3,}|~{3,}).*?"
+    r"(?:^[ \t>]*(?P=fence)[`~]*[ \t]*$|\Z))"
+    # Inline code does not cross a blank line.
+    r"|(?P<code>(?P<ticks>`+)(?:(?!\n[ \t>]*\n).)*?(?<!`)(?P=ticks)(?!`))"
+    r"|<!-- ai-agent-prompt:(?P<marker>start|end) -->"
+    r"|(?P<open><details>[\s>]*<summary>(?P<title>(?:(?!</summary>).)*)</summary>)"
+    r"|(?P<tag><(?P<close>/)?details>)",
+    re.IGNORECASE | re.DOTALL | re.MULTILINE,
 )
-# CodeRabbit renames its other prompts, but gives them a robot icon that its
-# findings do not use. The title cannot cross "</summary>", so a block that
-# holds findings and a prompt keeps its findings.
-CODERABBIT_PROMPT = re.compile(
-    # Blocks in quotes have ">" at the start of each line.
-    r"<details>[\s>]*<summary>(?:"
-    r"(?:(?!</summary>).)*?(?:\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE})(?:(?!</summary>).)*"
-    r"|(?:<[^>]*>|[^\w<])*Prompt for (?:all review comments with )?AI agents\s*"
-    r")</summary>",
-    re.IGNORECASE | re.DOTALL,
-)
-# Tags shown as examples in code do not open or close blocks.
-DETAILS_TAG = re.compile(
-    r"```.*?```|`[^`\n]*`|<(/?)details>", re.IGNORECASE | re.DOTALL
+# CodeRabbit renames its prompts, but gives them a robot icon that its findings
+# do not use.
+PROMPT_TITLE = re.compile(
+    r"\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE}"
+    r"|^(?:<[^>]*>|[^\w<])*Prompt for (?:all review comments with )?AI agents\s*$",
+    re.IGNORECASE,
 )
 
 
@@ -53,20 +55,31 @@ def author(item):
 
 
 def without_prompts(body):
-    # A prompt can contain example blocks, so remove up to its own closing tag.
-    while match := CODERABBIT_PROMPT.search(body):
-        depth = 1
-        for tag in DETAILS_TAG.finditer(body, match.end()):
-            if tag.group(1) is None:
-                continue
-            depth += -1 if tag.group(1) else 1
-            if not depth:
-                start, end = match.start(), tag.end()
-                body = body[:start] + body[end:]
-                break
+    """Removes CodeRabbit's prompts, which can contain example blocks."""
+    parts, pos, start, depth = [], 0, None, 0
+    for token in TOKEN.finditer(body):
+        if token["fenced"] or token["code"]:
+            continue
+        if start is None:
+            if token["marker"] == "start":
+                # A marked prompt ends at its end marker.
+                start, depth = token.start(), None
+            elif token["open"] and PROMPT_TITLE.search(token["title"]):
+                start, depth = token.start(), 1
+            continue
+        if depth is None:
+            done = token["marker"] == "end"
         else:
-            return body
-    return body
+            if token["open"] or (token["tag"] and not token["close"]):
+                depth += 1
+            elif token["close"]:
+                depth -= 1
+            done = depth == 0
+        if done:
+            parts.append(body[pos:start])
+            pos, start = token.end(), None
+    parts.append(body[pos:])
+    return "".join(parts)
 
 
 def message(item):
@@ -74,7 +87,7 @@ def message(item):
     # The markers and the robot icon are CodeRabbit's: other bots can use them
     # for findings.
     if author(item) == "coderabbitai[bot]":
-        body = without_prompts(MARKED_PROMPT.sub("", body))
+        body = without_prompts(body)
     elif (item.get("user") or {}).get("type") == "Bot":
         body = AGENT_PROMPT.sub("", body)
     return {"author": author(item), "body": body}

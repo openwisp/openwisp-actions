@@ -197,6 +197,28 @@ class TestMessage(unittest.TestCase):
             "Finding.\n\nMore findings.",
         )
 
+    def test_keeps_prompt_markup_in_finding_example(self):
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        body = (
+            "<details><summary>Security finding</summary>\n"
+            "The example starts a prompt:\n```html\n"
+            "<details><summary>🤖 Prompt to fix issue</summary>\n"
+            "```\nCritical security finding.\n</details>"
+        )
+        self.assertEqual(message({"user": bot, "body": body})["body"], body)
+
+    def test_removes_prompt_with_longer_fence(self):
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        body = (
+            "Finding.\n<details><summary>🤖 Prompt to fix issue</summary>\n"
+            "````\nThe code to fix:\n```html\n</details>\n```\n"
+            "Now fix it.\n````\n</details>\nMore findings."
+        )
+        self.assertEqual(
+            message({"user": bot, "body": body})["body"],
+            "Finding.\n\nMore findings.",
+        )
+
     def test_keeps_agent_prompts_written_by_people(self):
         body = f"Please check.\n\n{AGENT_BLOCK}"
         person = {"login": "contributor", "type": "User"}

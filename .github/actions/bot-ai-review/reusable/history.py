@@ -28,14 +28,16 @@ TOKEN = re.compile(
     # Inline code does not cross a blank line.
     r"|(?P<code>(?P<ticks>`+)(?:(?!\n[ \t>]*\n).)*?(?<!`)(?P=ticks)(?!`))"
     r"|<!-- ai-agent-prompt:(?P<marker>start|end) -->"
-    r"|(?P<open><details>[\s>]*<summary>(?P<title>(?:(?!</summary>).)*)</summary>)"
-    r"|(?P<tag><(?P<close>/)?details>)",
+    r"|(?P<open><details\b[^>]*>[\s>]*<summary\b[^>]*>"
+    r"(?P<title>(?:(?!</summary>).)*)</summary\s*>)"
+    r"|(?P<tag><(?P<close>/)?details\b[^>]*>)",
     re.IGNORECASE | re.DOTALL | re.MULTILINE,
 )
 # CodeRabbit renames its prompts, but gives them a robot icon that its findings
 # do not use.
 PROMPT_TITLE = re.compile(
-    r"\bbot(?:-dark)?\.svg\b|\N{ROBOT FACE}"
+    r"<(?:img|source)\b[^>]*[/\"']bot(?:-dark)?\.svg\b"
+    r"|\N{ROBOT FACE}"
     r"|^(?:<[^>]*>|[^\w<])*Prompt for (?:all review comments with )?AI agents\s*$",
     re.IGNORECASE,
 )

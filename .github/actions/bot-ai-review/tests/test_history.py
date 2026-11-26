@@ -219,6 +219,26 @@ class TestMessage(unittest.TestCase):
             "Finding.\n\nMore findings.",
         )
 
+    def test_keeps_finding_about_bot_svg(self):
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        body = (
+            "<details><summary>Security issue in bot.svg</summary>"
+            "The icon leaks credentials.</details>"
+        )
+        self.assertEqual(message({"user": bot, "body": body})["body"], body)
+
+    def test_prompt_with_open_nested_details(self):
+        bot = {"login": "coderabbitai[bot]", "type": "Bot"}
+        body = (
+            "Finding.\n<details><summary>🤖 Prompt to fix issue</summary>\n"
+            "<details open><summary>Example</summary>Example</details>\n"
+            "Run coderabbit review --agent.\n</details>\nMore findings."
+        )
+        self.assertEqual(
+            message({"user": bot, "body": body})["body"],
+            "Finding.\n\nMore findings.",
+        )
+
     def test_keeps_agent_prompts_written_by_people(self):
         body = f"Please check.\n\n{AGENT_BLOCK}"
         person = {"login": "contributor", "type": "User"}

@@ -62,10 +62,11 @@ Usage Example
     attempts, the action will exit with a non-zero status, causing the
     workflow to fail.
 
-See the `CI workflow <.github/workflows/ci.yml>`_ for an example of this
-action installing dependencies. In another repository, reference the
-`retry-command action <.github/actions/retry-command/action.yml>`_ by its
-full repository path and a pinned revision.
+Reference the `retry-command action
+<.github/actions/retry-command/action.yml>`_ by its full repository path
+and a pinned revision. This repository's `dependency installer
+<install-ci-deps.sh>`_ uses the same retry script so CI and AI reviews can
+share the installer.
 
 Auto-Assignment Bot
 ~~~~~~~~~~~~~~~~~~~
@@ -629,7 +630,7 @@ flock, OpenSSL, and Prettier available:
 
     python3.13 -m venv .venv
     source .venv/bin/activate
-    python -m pip install -r requirements-test.txt
+    ./install-ci-deps.sh
     ./run-qa-checks
     ./runtests
 

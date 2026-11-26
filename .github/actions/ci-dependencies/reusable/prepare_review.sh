@@ -30,11 +30,25 @@ sudo chown -R reviewer:reviewer "$REVIEW_HOME/.cache"
 mkdir -p "$HOME/.cache/ci-deps"
 SYSTEM_DEPS_READY=0
 if [ "${SYSTEM_DEPS_ENABLED:-false}" = true ]; then
-  # Run only the system phase from trusted base code before the reviewer sees PR files.
-  # The reviewer phase must skip system setup because it has no sudo privileges.
-  (cd "$GITHUB_WORKSPACE" && env -i "${MATRIX_ENV[@]}" HOME="$HOME" PATH="$PATH" CI=true \
-    DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \
-    CI_DEPS_CACHE="$HOME/.cache/ci-deps" CI_SYSTEM_DEPS_ONLY=1 bash ./install-ci-deps.sh)
+  installer=$(git -C "$GITHUB_WORKSPACE" ls-tree "${DEFAULT_SHA:?}" -- install-ci-deps.sh)
+  if [ -n "$installer" ]; then
+    (
+      system_root=$(mktemp -d "${RUNNER_TEMP:?}/system-deps.XXXXXXXX")
+      trap 'git -C "$GITHUB_WORKSPACE" worktree remove --force "$system_root"' EXIT
+      git -C "$GITHUB_WORKSPACE" worktree add --quiet --detach "$system_root" "$DEFAULT_SHA"
+      cd "$system_root"
+      # Do not pass the target branch's environment or tools to the default branch installer.
+      /usr/bin/env -i HOME="$HOME" PATH=/usr/sbin:/usr/bin:/sbin:/bin CI=true \
+        CI_QA="${CI_QA:-0}" CI_DEPS_CACHE="$HOME/.cache/ci-deps" CI_SYSTEM_DEPS_ONLY=1 \
+        /bin/bash ./install-ci-deps.sh
+    )
+  else
+    # Temporary rollout fallback (#47). This still trusts the PR target branch, never its head.
+    echo "::warning::The default branch has no install-ci-deps.sh; using the PR target branch"
+    (cd "$GITHUB_WORKSPACE" && env -i "${MATRIX_ENV[@]}" HOME="$HOME" PATH="$PATH" CI=true \
+      DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \
+      CI_DEPS_CACHE="$HOME/.cache/ci-deps" CI_SYSTEM_DEPS_ONLY=1 bash ./install-ci-deps.sh)
+  fi
   SYSTEM_DEPS_READY=1
 fi
 if [ -d "$HOME/.cache/ci-deps" ]; then
@@ -52,12 +66,20 @@ status=0
 sudo -n -H -u reviewer /usr/bin/env -i /usr/bin/python3 -I /usr/local/lib/ai-review-write-sandbox.py \
   "$REVIEW_HOME" "$RUN" -- /usr/bin/env "${MATRIX_ENV[@]}" \
   HOME="$REVIEW_HOME" USER=reviewer LOGNAME=reviewer CI=true \
-  PATH="$PATH" DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \
+  PATH="$REVIEW_HOME/.local/bin:$PATH" DJANGO_VERSION="$DJANGO_VERSION" CI_QA="${CI_QA:-0}" \
   TMPDIR="$REVIEW_HOME/.cache/ai-review-tmp" \
   CI_SYSTEM_DEPS_READY="$SYSTEM_DEPS_READY" \
   CI_DEPS_CACHE="$REVIEW_HOME/.cache/ci-deps" \
   YARN_CACHE_FOLDER="$REVIEW_HOME/.cache/yarn" \
-  /bin/bash ./install-ci-deps.sh </dev/null >"$output" 2>&1 || status=$?
+  /bin/bash -ec '
+    if [ "$1" = true ]; then
+      # Pip checks Unix permissions, which do not reflect Landlock write restrictions.
+      python -m venv .venv
+      export VIRTUAL_ENV="$PWD/.venv"
+      export PATH="$VIRTUAL_ENV/bin:$PATH"
+    fi
+    exec /bin/bash ./install-ci-deps.sh
+  ' prepare-review "${PREPARE_PYTHON:-false}" </dev/null >"$output" 2>&1 || status=$?
 printf '::stop-commands::%s\n' "$stop"
 cat -- "$output"
 printf '\n::%s::\n' "$stop"

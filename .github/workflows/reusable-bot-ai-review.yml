@@ -415,6 +415,8 @@ jobs:
       - name: Install trusted CI dependencies
         if: steps.ci.outcome == 'success'
         env:
+          DEFAULT_SHA: ${{ github.sha }} # issue_comment runs at the caller's default branch.
+          PREPARE_PYTHON: ${{ steps.python.outcome == 'success' || steps.qa-python.outcome == 'success' }}
           DJANGO_VERSION: ${{ steps.ci.outputs.django_version }}
           YARN_CACHE_DIR: ${{ steps.yarn-cache-dir-path.outputs.dir }}
           CI_QA: ${{ steps.node.outcome == 'success' && '1' || '0' }}

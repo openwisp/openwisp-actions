@@ -3,7 +3,9 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -14,17 +16,17 @@ SANDBOX = SYNC.with_name("write_sandbox.py")
 
 
 @pytest.mark.parametrize(
-    ("system_deps", "distro", "configured_django"),
+    ("system_deps", "distro", "configured_django", "default_installer", "python"),
     [
-        (False, "", ""),
-        (True, "ubuntu test", "django~=6.1"),
-        (False, "line1\nline2", ""),
-        (True, "a=b", ""),
-        (False, "$(false)", ""),
+        (False, "", "", False, False),
+        (True, "ubuntu test", "django~=6.1", True, False),
+        (False, "line1\nline2", "", False, True),
+        (True, "a=b", "", False, False),
+        (False, "$(false)", "", False, False),
     ],
 )
 def test_prepares_trusted_code_then_synchronizes_pull_request(
-    tmp_path, system_deps, distro, configured_django
+    tmp_path, system_deps, distro, configured_django, default_installer, python
 ):
     base = tmp_path / "base"
     pr = tmp_path / "pr"
@@ -44,6 +46,37 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
     yarn_cache = tmp_path / "yarn" / "v6"
     yarn_cache.mkdir(parents=True)
     (yarn_cache / "package").write_text("yarn cache")
+    git = [
+        "git",
+        "-C",
+        str(base),
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+    ]
+    subprocess.run([*git, "init", "-q"], check=True)
+    if default_installer:
+        (base / "install-ci-deps.sh").write_text(
+            'test "$CI_SYSTEM_DEPS_ONLY" = 1 && test -z "${DISTRO+x}" && '
+            'cat default.txt > "$HOME/system.txt"\n'
+        )
+        (base / "default.txt").write_text("default branch")
+        subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-qm", "Default", "--allow-empty"], check=True)
+    default_sha = subprocess.check_output(
+        [*git, "rev-parse", "HEAD"], text=True
+    ).strip()
+    if python:
+        with ZipFile(base / "probe-1.0-py3-none-any.whl", "w") as wheel:
+            info = "probe-1.0.dist-info"
+            wheel.writestr(f"{info}/METADATA", "Name: probe\nVersion: 1.0\n")
+            wheel.writestr(f"{info}/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
+            wheel.writestr(f"{info}/RECORD", "")
+            wheel.writestr("probe.py", 'def main(): print("installed CLI")\n')
+            wheel.writestr(
+                f"{info}/entry_points.txt", "[console_scripts]\nprobe = probe:main\n"
+            )
     (base / "feature.py").write_text("base")
     (base / "deleted.py").write_text("delete me")
     (base / "install-ci-deps.sh").write_text(
@@ -55,7 +88,12 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         '"${SECRET_SENTINEL-unset}" "${CI_QA-unset}" '
         '"${CI_SYSTEM_DEPS_READY:-0}" "${CI-unset}" "${DISTRO-unset}" '
         '"${DJANGO_VERSION-unset}" > installed.txt\nfi\n'
-        'printf "installer finished\\n"\n'
+        + (
+            "python -m pip install --no-index ./probe-*.whl && probe\n"
+            if python
+            else ""
+        )
+        + 'printf "installer finished\\n"\n'
     )
     (pr / "feature.py").write_text("pull request")
     sudo = bins / "sudo"
@@ -76,11 +114,15 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         "os.execvp(args[0], args)\n"
     )
     sudo.chmod(0o755)
+    (bins / "python").symlink_to(sys.executable)
+    (home / ".cache" / "ai-review-tmp").mkdir(parents=True)
     env = {
         **os.environ,
         "PATH": f"{bins}:/usr/bin:/bin",
         "HOME": str(runner_home),
         "GITHUB_WORKSPACE": str(base),
+        "DEFAULT_SHA": default_sha,
+        "PREPARE_PYTHON": str(python).lower(),
         "TEST_SANDBOX": str(SANDBOX),
         "RUNNER_TEMP": str(runner_temp),
         "YARN_CACHE_DIR": str(yarn_cache),
@@ -107,13 +149,20 @@ def test_prepares_trusted_code_then_synchronizes_pull_request(
         for index, line in enumerate(lines)
         if line.startswith("::stop-commands::")
     )
-    assert lines[start + 1] == "installer finished"
+    assert lines[-3] == "installer finished"
+    if python:
+        command_output = start + 1
+        assert "installed CLI" in lines[command_output:]
     assert lines[-1] == f"::{lines[start].removeprefix('::stop-commands::')}::"
     django_version = configured_django or "django~=5.2"
     assert (
         run / "installed.txt"
     ).read_text() == f"base:unset:1:{int(system_deps)}:true:{distro}:{django_version}"
-    if system_deps:
+    if default_installer:
+        assert (runner_home / "system.txt").read_text() == "default branch"
+        assert not (base / "system.txt").exists()
+    elif system_deps:
+        assert "default branch has no install-ci-deps.sh" in result.stdout
         assert (
             base / "system.txt"
         ).read_text() == f"base:unset:true:{distro}:{django_version}"

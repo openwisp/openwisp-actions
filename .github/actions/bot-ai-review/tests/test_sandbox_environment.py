@@ -1,9 +1,13 @@
 """Check that review commands do not inherit the runner's configuration paths."""
 
 import os
+import shlex
 import subprocess
 import sys
+import uuid
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "reusable" / "sandbox_shell.sh"
 PREPARE = SCRIPT.parent / "prepare_sandbox.sh"
@@ -14,7 +18,7 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
     sudo.write_text(
         "#!/usr/bin/env python3\n"
         "import os, sys\n"
-        "args = sys.argv[sys.argv.index('--', sys.argv.index('/usr/bin/env')) + 1:]\n"
+        "args = sys.argv[sys.argv.index('--', sys.argv.index('review-namespace')) + 1:]\n"
         "args = args[:1] + ['-i'] + args[1:args.index('/bin/bash')] + ['/usr/bin/env']\n"
         "os.execv(args[0], args)\n"
     )
@@ -123,7 +127,8 @@ def test_review_commands_use_installer_virtualenv(tmp_path):
     sudo.write_text(
         "#!/usr/bin/env python3\n"
         "import os, sys\n"
-        "args = sys.argv[sys.argv.index('/usr/bin/env'):]\n"
+        "args = ['/usr/bin/env', '-i', *sys.argv[sys.argv.index('review-namespace') + 1:]]\n"
+        "args.remove('/dev/shm')\n"
         "args = [arg.replace('/home/reviewer', os.environ['TEST_HOME'])"
         ".replace('/tmp/ai-review/run', os.environ['TEST_RUN'])"
         ".replace('/tmp/ai-review/pr', os.environ['TEST_PR'])"
@@ -154,3 +159,41 @@ def test_review_commands_use_installer_virtualenv(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "installed"
+
+
+@pytest.mark.skipif(
+    os.environ.get("GITHUB_ACTIONS") != "true", reason="needs runner sudo"
+)
+def test_review_commands_get_private_shared_memory(tmp_path):
+    home, run, pr = [tmp_path / name for name in ("reviewer", "run", "pr")]
+    for directory in (home, run, pr):
+        directory.mkdir()
+    shell = tmp_path / "sandbox_shell.sh"
+    script = SCRIPT.read_text()
+    for original, replacement in (
+        ("/home/reviewer", str(home)),
+        ("/tmp/ai-review/run", str(run)),
+        ("/tmp/ai-review/pr", str(pr)),
+        ("/usr/local/bin/ai-review-sync", "/usr/bin/true"),
+        (
+            "/usr/local/lib/ai-review-write-sandbox.py",
+            str(SCRIPT.with_name("write_sandbox.py")),
+        ),
+        ("-u reviewer", f'-u "#{os.getuid()}"'),
+    ):
+        script = script.replace(original, replacement)
+    shell.write_text(script)
+    marker = Path("/dev/shm") / f"review-test-{uuid.uuid4().hex}"
+    probe = (
+        "import multiprocessing; from pathlib import Path; "
+        f"s = multiprocessing.Semaphore(1); assert s.acquire(); Path({str(marker)!r}).touch()"
+    )
+    result = subprocess.run(
+        ["bash", str(shell), "-c", f"python -c {shlex.quote(probe)}"],
+        cwd=pr,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()

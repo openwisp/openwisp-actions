@@ -546,25 +546,29 @@ Without standardized CI, reviews continue without dependency setup. The
 installer receives ``CI=true`` and direct matrix references in the test
 job and dependency step environment. Other expressions are not evaluated.
 If a ``django-version`` axis is present, it takes precedence over a
-``DJANGO_VERSION`` value from another axis. An installer can create a
-virtual environment at the repository root as ``.venv``. Review commands
-use its Python and installed dependencies.
+``DJANGO_VERSION`` value from another axis. When CI selects Python, the
+review creates a virtual environment at the repository root as ``.venv``
+and uses it for dependency installation and review commands.
 
 The unprivileged installer and review commands require Linux Landlock ABI
 3 or newer. The workflow refuses to start either process if it cannot
 restrict file writes to the reviewer home and working copy. Use ``TMPDIR``
-for scratch files. The runner's toolchain stays available on ``PATH`` but
-is not writable by these processes.
+for scratch files. Review commands also get a private ``/dev/shm`` for
+tools such as Python multiprocessing. The runner's toolchain stays
+available on ``PATH`` but is not writable by these processes.
 
 For privileged host dependencies, set ``AI_REVIEW_SYSTEM_DEPS: "true"`` in
 the test job environment and follow the `installer phase contract
 <.github/actions/ci-dependencies/reusable/prepare_review.sh>`_. Additional
 caches use ``AI_REVIEW_CACHE_GLOB`` and, when needed,
-``AI_REVIEW_CACHE_AXES``. Privileged setup must use trusted base-branch
-code, not pull request code. Services, builds, and tests remain separate
-from installation. The ``./runtests`` entry point must allowlist reviewed
-test flags; argument validation does not sandbox untrusted test code or
-configuration.
+``AI_REVIEW_CACHE_AXES``. Privileged setup runs the installer from the
+default branch. During rollout, if that branch has no installer, the
+workflow warns and uses the pull request's target branch instead. Only
+request reviews against target branches you trust for system setup until
+the fallback is removed. Privileged setup never uses the pull request
+head. Services, builds, and tests remain separate from installation. The
+``./runtests`` entry point must allowlist reviewed test flags; argument
+validation does not sandbox untrusted test code or configuration.
 
 To run the AI review tests from the repository root:
 

@@ -12,9 +12,13 @@ if [ -n "${AI_REVIEW_STARTS:-}" ]; then
 print(json.dumps({"type": "tool_start", "timestamp": int(time.time() * 1000), "args": sys.argv[1:]}))' \
     "$@" >>"$AI_REVIEW_STARTS" || true
 fi
-# Apply the same write restriction to tests as to dependency installation.
-exec sudo -n -H -u reviewer -- /usr/bin/env -i \
-  /usr/bin/python3 -I /usr/local/lib/ai-review-write-sandbox.py /home/reviewer /tmp/ai-review/run -- \
+# Multiprocessing uses /dev/shm even with TMPDIR set. Keep its files off the host's /dev/shm.
+exec sudo -n -- /usr/bin/env -i /usr/bin/unshare --mount --propagation private /bin/bash -ec '
+  /usr/bin/mount -t tmpfs -o nosuid,nodev,noexec,mode=1777,size=512M tmpfs /dev/shm
+  exec /usr/bin/sudo -n -H -u reviewer -- "$@"
+' review-namespace \
+  /usr/bin/python3 -I /usr/local/lib/ai-review-write-sandbox.py \
+  /home/reviewer /tmp/ai-review/run /dev/shm -- \
   /usr/bin/env HOME=/home/reviewer USER=reviewer LOGNAME=reviewer \
   TMPDIR=/home/reviewer/.cache/ai-review-tmp \
   XDG_CONFIG_HOME=/home/reviewer/.config XDG_CACHE_HOME=/home/reviewer/.cache \

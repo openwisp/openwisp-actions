@@ -624,14 +624,13 @@ Development
 ===========
 
 From the repository root on Linux, with Bash, Git, jq, ``yq`` v4, rsync,
-flock, OpenSSL, Node.js, and npm available:
+flock, OpenSSL, and Prettier available:
 
 .. code-block:: shell
 
     python3.13 -m venv .venv
     source .venv/bin/activate
-    ./install-ci-deps.sh
-    export PATH="$HOME/.local/bin:$PATH"
+    python -m pip install -r requirements-test.txt
     ./run-qa-checks
     ./runtests
 

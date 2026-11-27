@@ -431,7 +431,8 @@ review by commenting on a pull request:
    a maintainer decision. Using the `OpenWISP Threat Model
    <https://github.com/openwisp/openwisp-docs/blob/master/security/threat-model.rst>`_,
    it also states whether the change affects the security perimeter and
-   recommends ``/security-review`` or ``/final-review`` next.
+   recommends ``/security-review`` or ``/final-review`` after blocking
+   findings and maintainer decisions are resolved.
 2. ``/security-review``: looks for actionable security issues.
 3. ``/final-review``: checks whether earlier findings were addressed and
    looks for new critical issues, including significant violations of
@@ -449,10 +450,19 @@ stops and requests changes with the evidence.
 The OpenWISP bot publishes the review with a verdict, a summary and inline
 comments labeled ``P1`` to ``P3``. A ``Maintainer decision needed``
 verdict is posted as a comment and keeps earlier change requests of the
-same stage. Conclusive reviews dismiss earlier change requests of the same
-stage. To verify its findings, the model can search the web, fetch pages,
-edit a temporary copy of the pull request and run allowed commands, such
-as tests. Commands run as a separate user that cannot read the model
+same stage. Conclusive reviews attempt to dismiss earlier Companion change
+requests of the same stage. If dismissal fails, the bot posts a separate
+review comment so maintainers can check the earlier requests. The GitHub
+App needs pull request write permission and, when branch protection
+restricts who can dismiss reviews, must be allowed to dismiss them in the
+`branch protection settings
+<https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#restrict-who-can-dismiss-pull-request-reviews>`_.
+If GitHub rejects an inline finding because its diff entry is too large,
+the review includes all inline findings in its summary instead.
+
+To verify its findings, the model can search the web, fetch pages, edit a
+temporary copy of the pull request and run allowed commands, such as
+tests. Commands run as a separate user that cannot read the model
 credentials, and the model has no access to the workflow's GitHub tokens.
 Pull request content, tool output and fetched pages are treated as
 untrusted data. Each review also reads the pull request title, description

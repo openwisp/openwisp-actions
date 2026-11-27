@@ -74,7 +74,12 @@ suggests the better approach, and there are no line comments:
 maintainers decide on the direction first.
 
 Use "Needs changes" for a definite P1 or P2 issue even if a maintainer
-decision is also needed. Explain the decision in the summary as well.
+decision is also needed. Explain the decision in the summary as well. If
+there is no definite P1 or P2 issue and only a decision remains, use
+"Maintainer decision needed", unless a CI failure cannot be ruled out as
+caused by the change. For "Needs changes", explain the concrete
+problem, its impact and what needs to change in "blocking_issue", even if
+there are no line comments. Do not leave the explanation only in the title.
 
 Severity of line comments:
 
@@ -96,6 +101,7 @@ Reply with ONLY this JSON and nothing else:
  "boundary": "<affected boundary of the threat model, for YES>",
  "title": "<short title of the result>",
  "summary": "- <short bullet>\n- <short bullet>",
+ "blocking_issue": "<concrete problem, impact and action for Needs changes>",
  "comments": [{"file": "<path>", "line": <number>,
                "severity": "P1" or "P2" or "P3",
                "title": "<short title>",

@@ -41,12 +41,21 @@ case "$*" in
   *"issues/comments/9 --jq .user.id"*) echo 42 ;;
   *"/dismissals"*) if [ "${FAIL_DISMISS:-}" = 1 ]; then echo 'dismissal denied' >&2; exit 1; fi ;;
   "api --paginate "*) if [ "${FAIL_LIST:-}" = 1 ]; then exit 1; fi; cat "$STATE/reviews.json" ;;
-  "api -X POST "*) cat >"$STATE/review.json" ;;
+  "api -X POST "*)
+    cat >"$STATE/request.json"
+    if [ "${FAIL_POST:-}" = 1 ]; then echo 'network failure' >&2; exit 1; fi
+    if [ "${FAIL_LARGE:-}" = 1 ] && jq -e '.comments | length > 0' "$STATE/request.json" >/dev/null; then
+      echo 'gh: Unprocessable Entity (HTTP 422): Diff entry a.py diff is too large' >&2; exit 1
+    fi
+    if [ -f "$STATE/review.json" ]; then
+      cp "$STATE/request.json" "$STATE/notice.json"
+    else
+      cp "$STATE/request.json" "$STATE/review.json"
+    fi ;;
 esac
 """
 FAKE_TOOL = """#!/usr/bin/env bash
 echo "$(basename "$0") $*" >>"$STATE/log"
-if [ "$(basename "$0") $1" = "crit push" ] && [ "${FAIL_PUSH:-}" = 1 ]; then exit 1; fi
 """
 FAILED = {
     "event": "comment",
@@ -82,9 +91,10 @@ def publish(
     lookup_user_id=42,
     fail_dismiss=False,
     fail_list=False,
+    fail_large=False,
 ):
     with tempfile.TemporaryDirectory() as state:
-        for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
+        for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL)):
             path = os.path.join(state, name)
             with open(path, "w") as f:
                 f.write(content)
@@ -129,6 +139,8 @@ def publish(
             "FAIL_PUSH": str(int(fail_push)),
             "FAIL_DISMISS": str(int(fail_dismiss)),
             "FAIL_LIST": str(int(fail_list)),
+            "FAIL_POST": str(int(fail_push)),
+            "FAIL_LARGE": str(int(fail_large)),
             "STAGE": stage,
             "MODEL": "provider/model",
             "GITHUB_RUN_ID": "123",
@@ -155,6 +167,10 @@ def publish(
                 review = json.load(f)
         else:
             review = None
+        notice_path = os.path.join(state, "notice.json")
+        if os.path.exists(notice_path):
+            with open(notice_path) as f:
+                log.append("notice " + json.load(f)["body"])
         if (
             remote_head != HEAD_SHA
             or fail_push
@@ -186,7 +202,7 @@ class TestPublish(unittest.TestCase):
     def test_failed_publication_does_not_dismiss_reviews(self):
         status, log = publish(CHANGES, fail_push=True)
         self.assertNotEqual(status, 0)
-        self.assertTrue(any(line.startswith("crit push") for line in log))
+        self.assertTrue(any("api -X POST" in line for line in log))
         self.assertEqual(dismissals(log), [])
 
     def test_keeps_change_requests_without_a_conclusion(self):
@@ -202,10 +218,12 @@ class TestPublish(unittest.TestCase):
                 self.assertEqual(len(dismissals(log)), 1)
                 self.assertIn("pulls/1/reviews/1/dismissals", dismissals(log)[0])
 
-    def test_posts_line_comments_with_crit(self):
+    def test_posts_line_comments_with_review(self):
         log, review = publish(CHANGES)
-        self.assertIsNone(review)
-        self.assertTrue(any(line.startswith("crit push 1") for line in log))
+        self.assertEqual(
+            review["comments"],
+            [{"path": "a.py", "line": 1, "side": "RIGHT", "body": "x"}],
+        )
 
     def test_posts_verdict_and_summary_without_line_comments(self):
         cases = [
@@ -356,16 +374,32 @@ class TestPublish(unittest.TestCase):
         log, review = publish(APPROVED, comments=(), fail_dismiss=True)
         self.assertEqual(review["event"], "APPROVE")
         self.assertEqual(len(dismissals(log)), 1)
+        self.assertTrue(
+            any(line.startswith("notice ") and "review 1" in line for line in log)
+        )
 
     def test_review_listing_failure_does_not_report_publication_failure(self):
         log, review = publish(APPROVED, comments=(), fail_list=True)
         self.assertEqual(review["event"], "APPROVE")
         self.assertEqual(dismissals(log), [])
+        self.assertTrue(
+            any(line.startswith("notice ") and "earlier" in line for line in log)
+        )
 
     def test_publication_uses_prefetched_commit(self):
         log, _ = publish(APPROVED, comments=())
         self.assertTrue(any(line.startswith("git checkout ") for line in log))
         self.assertFalse(any(line.startswith("git fetch ") for line in log))
+
+    def test_large_diff_rejection_preserves_every_finding_in_review(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "details"})
+        log, review = publish(CHANGES, comments=comments, fail_large=True)
+        self.assertNotIn("comments", review)
+        self.assertEqual(review["event"], "REQUEST_CHANGES")
+        self.assertIn("a.py:1", review["body"])
+        self.assertIn("b.py:9", review["body"])
+        self.assertIn("details", review["body"])
+        self.assertEqual(len(dismissals(log)), 1)
 
 
 if __name__ == "__main__":

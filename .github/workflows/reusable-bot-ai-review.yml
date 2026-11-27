@@ -507,16 +507,6 @@ jobs:
           name: ai-review-findings
           path: ${{ runner.temp }}/findings
 
-      - name: Check for inline comments
-        id: comments
-        env:
-          FINDINGS: ${{ runner.temp }}/findings/findings.json
-        run: echo "present=$(jq -r '.comments | length > 0' "$FINDINGS")" >> "$GITHUB_OUTPUT"
-
-      - name: Install Crit
-        if: steps.comments.outputs.present == 'true'
-        run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/install_crit.sh
-
       - name: Fetch pull request for publication
         # The workflow token can read private repositories without requiring
         # existing App installations to grant an additional Contents permission.

@@ -38,7 +38,7 @@ if [ -n "$TITLE" ]; then
 fi
 BODY+=$SUMMARY
 if [ "${CI_AWARE:-false}" = true ]; then
-  # Identify this exact publication even when Crit posts the review with inline comments.
+  # Identify this exact publication when returning its URL to the waiting request.
   REVIEW_MARKER="<!-- ai-review-run ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1} -->"
   BODY+=$'\n\n'"$REVIEW_MARKER"
 fi
@@ -59,15 +59,30 @@ if [ "$CURRENT_BASE" != "$BASE_REF" ]; then
   echo "::error::The pull request base changed during the review; request another review"
   exit 1
 fi
-if [ "$(jq 'length' "$COMMENTS")" -eq 0 ]; then
-  jq -n --arg body "$BODY" --arg event "$EVENT" --arg commit "$HEAD_SHA" '{
+post_review() {
+  jq -n --arg body "$BODY" --arg event "$EVENT" --arg commit "$HEAD_SHA" \
+    --slurpfile comments "$COMMENTS" '{
     body: $body,
     commit_id: $commit,
-    event: {comment: "COMMENT", approve: "APPROVE", "request-changes": "REQUEST_CHANGES"}[$event]
-  }' | gh api -X POST "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --input - --silent
-else
-  crit comment --json --file "$COMMENTS"
-  crit push "$PR_NUMBER" --event "$EVENT" --message "$BODY"
+    event: {comment: "COMMENT", approve: "APPROVE", "request-changes": "REQUEST_CHANGES"}[$event],
+    comments: [$comments[0][] | {path: .file, line: .line, side: "RIGHT", body: .body}]
+  } | if (.comments | length) == 0 then del(.comments) else . end' |
+    gh api -X POST "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --input - --silent
+}
+ERROR="$RUNNER_TEMP/review-error.txt"
+if ! post_review 2>"$ERROR"; then
+  # A 422 rejects the whole review. Other failures can be ambiguous, so do not retry them.
+  if [ "$(jq 'length' "$COMMENTS")" -gt 0 ] && \
+    grep -Fq 'Unprocessable Entity (HTTP 422): Diff entry ' "$ERROR" && \
+    grep -Fq 'diff is too large' "$ERROR"; then
+    BODY+=$'\n\n**Inline findings (GitHub could not display the diff):**\n\n'
+    BODY+=$(jq -r '.[] | "- `\(.file):\(.line)`\n\n\(.body)\n"' "$COMMENTS")
+    jq -n '[]' >"$COMMENTS"
+    post_review
+  else
+    cat "$ERROR" >&2
+    exit 1
+  fi
 fi
 if [ "${CI_AWARE:-false}" = true ] && [ -n "${RECORD_ID:-}" ]; then
   # Match the marker and the app's bot account, not an unrelated review of the same commit.
@@ -87,16 +102,30 @@ case "$VERDICT" in
 esac
 
 # Do not use the app's dismissal permission on another reviewer's change requests.
-if ! gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |
+REVIEW_IDS="$RUNNER_TEMP/earlier-reviews.txt"
+NOTICE=""
+if gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |
   jq -rs --arg prefix "AI $STAGE of " '
     [.[][] | select(.user.login == "openwisp-companion[bot]" and (.body | startswith($prefix)))]
     | sort_by(.id) | .[:-1][]
-    | select(.state == "CHANGES_REQUESTED") | .id' |
+    | select(.state == "CHANGES_REQUESTED") | .id' >"$REVIEW_IDS"; then
   while read -r REVIEW_ID; do
     if ! gh api -X PUT "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID/dismissals" \
       -f message="Superseded by a newer AI $STAGE." -f event=DISMISS --silent; then
       echo "::warning::Published the review, but could not dismiss earlier review $REVIEW_ID"
+      NOTICE+=" Earlier review $REVIEW_ID could not be dismissed."
     fi
-  done; then
+  done <"$REVIEW_IDS"
+else
   echo "::warning::Published the review, but could not list earlier reviews for dismissal"
+  NOTICE=" Earlier reviews could not be checked for dismissal."
+fi
+if [ -n "$NOTICE" ]; then
+  NOTICE="The AI $STAGE was published, but superseded change requests may still be active.$NOTICE"
+  NOTICE+=" Please check earlier Companion reviews and dismiss superseded requests if appropriate."
+  if ! jq -n --arg body "$NOTICE" --arg commit "$HEAD_SHA" \
+    '{body: $body, commit_id: $commit, event: "COMMENT"}' |
+    gh api -X POST "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --input - --silent; then
+    echo "::warning::Could not post the dismissal warning to the pull request"
+  fi
 fi

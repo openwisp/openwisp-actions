@@ -5,6 +5,8 @@ Usage: extract_findings.py <model-output> <diff> <stage>
 - Prints the findings as JSON, or a "review not completed" fallback.
 - Keeps only line comments on new-side diff lines, which GitHub accepts,
   and lists the other findings in the summary instead of dropping them.
+- Joins summary bullets that the model wrote as separate strings, which is
+  not valid JSON, so a clear verdict is not lost.
 """
 
 import ast
@@ -40,6 +42,9 @@ MAX_COMMENTS = 20
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+STRING = r'"(?:[^"\\]|\\.)*"'
+# Strings after the summary that are not followed by ":" are not keys.
+SPLIT_SUMMARY = re.compile(rf'("summary"\s*:\s*)({STRING}(?:\s*,\s*{STRING}(?!\s*:))+)')
 FALLBACK = {
     "event": "comment",
     "verdict": "Review not completed",
@@ -48,16 +53,34 @@ FALLBACK = {
 }
 
 
-def find_json(text):
+def decode(text):
     decoder = json.JSONDecoder(strict=False)
     for start in reversed([m.start() for m in re.finditer(r"\{", text)]):
+        candidate = text[start:]
         try:
-            data, _ = decoder.raw_decode(text, start)
+            data, _ = decoder.raw_decode(candidate)
         except json.JSONDecodeError:
-            continue
+            # Repair this candidate before considering an earlier complete draft.
+            try:
+                data, _ = decoder.raw_decode(SPLIT_SUMMARY.sub(join_summary, candidate))
+            except json.JSONDecodeError:
+                continue
         if isinstance(data, dict) and "verdict" in data:
             return data
     return None
+
+
+def join_summary(match):
+    try:
+        bullets = json.loads(f"[{match.group(2)}]", strict=False)
+    except json.JSONDecodeError:
+        # The answer stays invalid, so the fallback review is published.
+        return match.group(0)
+    return match.group(1) + json.dumps("\n".join(bullets))
+
+
+def find_json(text):
+    return decode(text)
 
 
 def parse_finding(comment):

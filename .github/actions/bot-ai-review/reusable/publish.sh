@@ -105,7 +105,7 @@ if ! post_review >"$RESPONSE" 2>"$ERROR"; then
       printf '\n\n%s' "$REVIEW_MARKER" >>"$BODY_FILE"
     fi
     jq -n '[]' >"$COMMENTS"
-    post_review >/dev/null
+    post_review >"$RESPONSE"
     for ((INDEX = 1; INDEX < CHUNK_COUNT; INDEX++)); do
       jq -n --slurpfile chunks "$CHUNKS" --argjson index "$INDEX" --arg commit "$HEAD_SHA" \
         '{body: $chunks[0][$index], commit_id: $commit, event: "COMMENT"}' |
@@ -119,7 +119,7 @@ if ! post_review >"$RESPONSE" 2>"$ERROR"; then
       if [ "${CI_AWARE:-false}" = true ]; then
         printf '\n\n%s' "$REVIEW_MARKER" >>"$BODY_FILE"
       fi
-      post_review >/dev/null
+      post_review >"$RESPONSE"
     fi
   else
     cat "$ERROR" >&2
@@ -146,10 +146,16 @@ esac
 # Do not use the app's dismissal permission on another reviewer's change requests.
 REVIEW_IDS="$RUNNER_TEMP/earlier-reviews.txt"
 NOTICE=""
-if gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |
-  jq -rs --arg prefix "AI $STAGE of " '
+# Continuation text can resemble a review header, so only dismiss IDs older than the posted review.
+CURRENT_REVIEW_ID=$(jq -Rser '
+  capture("(?s)\\r?\\n\\r?\\n(?<body>.*)").body | fromjson | .id | numbers' "$RESPONSE") || true
+if [ -z "$CURRENT_REVIEW_ID" ]; then
+  echo "::warning::Published the review, but could not identify it for dismissal"
+  NOTICE=" Earlier reviews could not be checked for dismissal."
+elif gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" |
+  jq -rs --arg prefix "AI $STAGE of " --argjson current "$CURRENT_REVIEW_ID" '
     [.[][] | select(.user.login == "openwisp-companion[bot]" and (.body | startswith($prefix)))]
-    | sort_by(.id) | .[:-1][]
+    | .[] | select(.id < $current)
     | select(.state == "CHANGES_REQUESTED") | .id' >"$REVIEW_IDS"; then
   while read -r REVIEW_ID; do
     if ! gh api -X PUT "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews/$REVIEW_ID/dismissals" \

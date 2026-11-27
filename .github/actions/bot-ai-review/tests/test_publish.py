@@ -60,6 +60,9 @@ case "$*" in
     else
       cp "$STATE/request.json" "$STATE/review.json"
     fi
+    if [[ "$*" == *--include* ]]; then
+      printf 'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n%s' "$REVIEW_RESPONSE"
+    fi
     jq -r '"posted " + .event' "$STATE/request.json" >>"$STATE/log" ;;
 esac
 """
@@ -102,6 +105,8 @@ def publish(
     fail_list=False,
     fail_large=False,
     fail_followup=False,
+    extra_reviews=(),
+    missing_review_id=False,
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL)):
@@ -117,6 +122,9 @@ def publish(
                 }
                 for review in REVIEWS
             ]
+            if findings["event"] == "request-changes":
+                reviews[1]["state"] = "CHANGES_REQUESTED"
+            reviews.extend(extra_reviews)
             if ci_aware:
                 reviews.append(
                     {
@@ -152,6 +160,7 @@ def publish(
             "FAIL_POST": str(int(fail_push)),
             "FAIL_LARGE": str(int(fail_large)),
             "FAIL_FOLLOWUP": str(int(fail_followup)),
+            "REVIEW_RESPONSE": "{}" if missing_review_id else '{"id":2}',
             "STAGE": stage,
             "MODEL": "provider/model",
             "GITHUB_RUN_ID": "123",
@@ -471,6 +480,24 @@ class TestPublish(unittest.TestCase):
         self.assertNotIn(marker, review["body"])
         self.assertIn(marker, [line for line in log if line.startswith("notice ")][-1])
         self.assertEqual(output, "review_url=https://example.test/review/3\n")
+
+    def test_continuation_cannot_supersede_the_current_change_request(self):
+        continuation = {
+            "id": 3,
+            "user": {"login": "openwisp-companion[bot]"},
+            "body": "AI review of quoted text",
+            "state": "COMMENTED",
+        }
+        log, _ = publish(CHANGES, extra_reviews=(continuation,))
+        self.assertEqual(len(dismissals(log)), 1)
+        self.assertIn("pulls/1/reviews/1/dismissals", dismissals(log)[0])
+
+    def test_missing_review_id_keeps_earlier_change_requests(self):
+        log, _ = publish(CHANGES, missing_review_id=True)
+        self.assertEqual(dismissals(log), [])
+        self.assertTrue(
+            any(line.startswith("notice ") and "earlier" in line for line in log)
+        )
 
 
 if __name__ == "__main__":

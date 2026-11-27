@@ -321,11 +321,12 @@ def main():
             parsed and parsed["severity"] in ("P1", "P2")
             for parsed in map(parse_finding, data.get("comments", []))
         )
-        if findings["verdict"] == "Needs changes" and not serious:
+        if findings["verdict"] == "Needs changes":
             explanation = data.get("blocking_issue")
-            if not isinstance(explanation, str) or not explanation.strip():
+            has_explanation = isinstance(explanation, str) and explanation.strip()
+            if not serious and not has_explanation:
                 findings = None
-            else:
+            elif has_explanation:
                 findings["summary"] += "\n\n**Blocking issue:** " + explanation.strip()
     if findings and stage == "review" and findings["verdict"] != INJECTION:
         note = perimeter(data, findings["verdict"])

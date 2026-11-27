@@ -45,7 +45,9 @@ case "$*" in
     cat >"$STATE/request.json"
     if [ "${FAIL_POST:-}" = 1 ]; then echo 'network failure' >&2; exit 1; fi
     if [ "${FAIL_LARGE:-}" = 1 ] && jq -e '.comments | length > 0' "$STATE/request.json" >/dev/null; then
-      echo 'gh: Unprocessable Entity (HTTP 422): Diff entry a.py diff is too large' >&2; exit 1
+      printf 'HTTP/2.0 422 Unprocessable Entity\r\nContent-Type: application/json\r\n\r\n'
+      echo '{"message":"Validation Failed","errors":[{"message":"Diff entry a.py diff is too large"}]}'
+      echo 'gh: Validation Failed (HTTP 422)' >&2; exit 1
     fi
     if [ -f "$STATE/review.json" ]; then
       cp "$STATE/request.json" "$STATE/notice.json"

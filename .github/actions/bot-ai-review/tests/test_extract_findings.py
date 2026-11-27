@@ -620,6 +620,16 @@ class TestMain(unittest.TestCase):
         )
         self.assertIn("Existing databases become inaccessible", result["summary"])
 
+    def test_preserves_blocking_explanation_with_inline_finding(self):
+        result = self.review(
+            verdict="Needs changes",
+            security_perimeter="NO",
+            comments=[comment()],
+            blocking_issue="A separate migration can lose existing data.",
+        )
+        self.assertEqual(len(result["comments"]), 1)
+        self.assertIn("A separate migration can lose existing data", result["summary"])
+
     def test_final_review_cannot_approve_serious_findings(self):
         for severity in ("P1", "P2"):
             for path in ("app.py", "other.py"):

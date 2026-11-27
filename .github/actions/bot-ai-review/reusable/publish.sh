@@ -67,18 +67,21 @@ post_review() {
     event: {comment: "COMMENT", approve: "APPROVE", "request-changes": "REQUEST_CHANGES"}[$event],
     comments: [$comments[0][] | {path: .file, line: .line, side: "RIGHT", body: .body}]
   } | if (.comments | length) == 0 then del(.comments) else . end' |
-    gh api -X POST "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --input - --silent
+    gh api -X POST "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --input - --include
 }
 ERROR="$RUNNER_TEMP/review-error.txt"
-if ! post_review 2>"$ERROR"; then
+RESPONSE="$RUNNER_TEMP/review-response.txt"
+if ! post_review >"$RESPONSE" 2>"$ERROR"; then
+  # Include the response body: gh may omit detailed validation errors from stderr.
+  IFS= read -r STATUS <"$RESPONSE" || true
   # A 422 rejects the whole review. Other failures can be ambiguous, so do not retry them.
   if [ "$(jq 'length' "$COMMENTS")" -gt 0 ] && \
-    grep -Fq 'Unprocessable Entity (HTTP 422): Diff entry ' "$ERROR" && \
-    grep -Fq 'diff is too large' "$ERROR"; then
+    [[ "$STATUS" =~ ^HTTP/[0-9.]+[[:space:]]422[[:space:]] ]] && \
+    grep -Fq 'Diff entry ' "$RESPONSE" && grep -Fq 'diff is too large' "$RESPONSE"; then
     BODY+=$'\n\n**Inline findings (GitHub could not display the diff):**\n\n'
     BODY+=$(jq -r '.[] | "- `\(.file):\(.line)`\n\n\(.body)\n"' "$COMMENTS")
     jq -n '[]' >"$COMMENTS"
-    post_review
+    post_review >/dev/null
   else
     cat "$ERROR" >&2
     exit 1

@@ -142,6 +142,8 @@ def coordinate(
         comment = resume_record(api, dispatch, app_id, repository, pr_number)
         if comment is None:
             return {}
+        # The validated resume comment has triggered the workflow; remove it to
+        # keep the PR discussion clear. A deletion failure is harmless.
         try:
             api.delete(dispatch["id"])
         except (subprocess.SubprocessError, OSError):

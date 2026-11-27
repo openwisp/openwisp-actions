@@ -11,6 +11,8 @@ EVENTS="$RUNNER_TEMP/events.jsonl"
 OUTPUT="$RUNNER_TEMP/output.txt"
 export OPENCODE_CONFIG="$DIR/../opencode.json"
 if [ "${ALLOW_ENV_FILES:-false}" = true ]; then
+  # The workflow allowlists repositories that commit non-secret .env defaults;
+  # retain external-directory restrictions when allowing those files to be read.
   CONFIG="$RUNNER_TEMP/opencode.json"
   jq '.permission.read = {"*": "allow", "*.env": "allow", "*.env.*": "allow"}' \
     "$OPENCODE_CONFIG" >"$CONFIG"

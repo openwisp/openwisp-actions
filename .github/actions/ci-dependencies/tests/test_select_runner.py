@@ -40,7 +40,9 @@ def select(tmp_path, workflow=None):
     return output.read_text(), result.stdout
 
 
-@pytest.mark.parametrize("runner", ["ubuntu-22.04", "ubuntu-24.04", "ubuntu-latest"])
+@pytest.mark.parametrize(
+    "runner", ["ubuntu-22.04", "ubuntu-24.04", "ubuntu-26.04", "ubuntu-latest"]
+)
 def test_uses_hosted_ubuntu_runner_of_ci(tmp_path, runner):
     output, stdout = select(tmp_path, f"jobs:\n  test:\n    runs-on: {runner}\n")
     assert output == f"runner={runner}\n"
@@ -53,7 +55,13 @@ def test_uses_hosted_ubuntu_runner_of_ci(tmp_path, runner):
 
 @pytest.mark.parametrize(
     "runner",
-    ["self-hosted", "macos-15", "[self-hosted, linux]", "${{ matrix.os }}"],
+    [
+        "ubuntu-99.99",
+        "self-hosted",
+        "macos-15",
+        "[self-hosted, linux]",
+        "${{ matrix.os }}",
+    ],
 )
 def test_other_runners_fall_back_with_a_warning(tmp_path, runner):
     output, stdout = select(tmp_path, f"jobs:\n  test:\n    runs-on: {runner}\n")

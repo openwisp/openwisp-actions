@@ -44,6 +44,14 @@ Then, only if the direction looks right, check:
 4. Race conditions: concurrent requests, background tasks, retries,
    overlapping updates.
 5. Maintainability and the rules in the attached guidance file.
+   Check whether non-obvious decisions and side effects have a short comment
+   explaining why they are needed. Do not request comments that merely repeat
+   what the code does.
+6. Documentation: check for a concise, current overview that answers readers'
+   practical questions, with more detail where useful. It should be easy to
+   scan and link to existing guidance instead of duplicating it. Do not translate
+   code into prose or enumerate edge cases; explain non-obvious implementation
+   decisions in code comments instead.
 
 Review all kinds of changed files relevant to the change, including tests,
 scripts, documentation, migrations, CI and configuration.

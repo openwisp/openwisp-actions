@@ -548,14 +548,15 @@ with ``review_default: true``. Declare required browsers with
 <.github/actions/ci-cache/action.yml>`_ for the supported settings.
 Without standardized CI, reviews continue without dependency setup.
 Reviews run on the runner image of the CI test job on the target branch
-when it is a GitHub-hosted ``ubuntu-latest`` or ``ubuntu-NN.NN`` label,
-and on ``ubuntu-latest`` otherwise. The installer receives ``CI=true`` and
-direct matrix references in the test job and dependency step environment.
-Other expressions are not evaluated. If a ``django-version`` axis is
-present, it takes precedence over a ``DJANGO_VERSION`` value from another
-axis. When CI selects Python, the review creates a virtual environment at
-the repository root as ``.venv`` and uses it for dependency installation
-and review commands.
+when it is a supported GitHub-hosted Ubuntu label, and on
+``ubuntu-latest`` otherwise. Reviews require a GitHub-hosted runner.
+
+The installer receives ``CI=true`` and direct matrix references in the
+test job and dependency step environment. Other expressions are not
+evaluated. If a ``django-version`` axis is present, it takes precedence
+over a ``DJANGO_VERSION`` value from another axis. When CI selects Python,
+the review creates a virtual environment at the repository root as
+``.venv`` and uses it for dependency installation and review commands.
 
 The unprivileged installer and review commands require Linux Landlock ABI
 3 or newer. The workflow refuses to start either process if it cannot

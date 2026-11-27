@@ -230,6 +230,12 @@ jobs:
     outputs:
       setup_failed: ${{ steps.deps.outcome == 'failure' }}
     steps:
+      - name: Require a GitHub-hosted review runner
+        if: runner.environment != 'github-hosted'
+        run: |
+          echo "::error::AI reviews require a GitHub-hosted runner"
+          exit 1
+
       - name: Checkout trusted revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

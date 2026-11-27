@@ -34,9 +34,39 @@ def test_installs_python_and_prettier_dependencies(tmp_path, github_actions):
         "--ignore-scripts",
         "--prefix",
         str(home / ".local"),
-        "prettier@3.9.4",
+        "prettier",
     ]
     if github_actions:
         assert github_path.read_text().splitlines() == [str(home / ".local" / "bin")]
     else:
         assert not github_path.exists()
+
+
+@pytest.mark.parametrize("failure", ["python", "npm"])
+def test_stops_when_dependency_installation_fails(tmp_path, failure):
+    marker = tmp_path / "npm-ran"
+    for tool in ("python", "npm", "sleep"):
+        stub = tmp_path / tool
+        commands = []
+        if tool == "npm":
+            commands.append(f'touch "{marker}"')
+        commands.append("exit 1" if tool == failure else "exit 0")
+        stub.write_text("#!/bin/sh\n" + "\n".join(commands) + "\n")
+        stub.chmod(0o755)
+    github_path = tmp_path / "path"
+    github_path.write_text("existing\n")
+    result = subprocess.run(
+        ["./install-ci-deps.sh"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "HOME": str(tmp_path),
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "GITHUB_PATH": str(github_path),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert marker.exists() == (failure == "npm")
+    assert github_path.read_text() == "existing\n"

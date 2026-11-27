@@ -44,6 +44,9 @@ case "$*" in
   "api -X POST "*)
     cat >"$STATE/request.json"
     if [ "${FAIL_POST:-}" = 1 ]; then echo 'network failure' >&2; exit 1; fi
+    if [ "${FAIL_FOLLOWUP:-}" = 1 ] && [ -f "$STATE/review.json" ]; then
+      echo 'continuation failed' >&2; exit 1
+    fi
     if jq -e '(.body | length) > 65536' "$STATE/request.json" >/dev/null; then
       echo 'gh: body is too long (HTTP 422)' >&2; exit 1
     fi
@@ -56,7 +59,8 @@ case "$*" in
       jq -c . "$STATE/request.json" >>"$STATE/notices.jsonl"
     else
       cp "$STATE/request.json" "$STATE/review.json"
-    fi ;;
+    fi
+    jq -r '"posted " + .event' "$STATE/request.json" >>"$STATE/log" ;;
 esac
 """
 FAKE_TOOL = """#!/usr/bin/env bash
@@ -97,6 +101,7 @@ def publish(
     fail_dismiss=False,
     fail_list=False,
     fail_large=False,
+    fail_followup=False,
 ):
     with tempfile.TemporaryDirectory() as state:
         for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL)):
@@ -146,6 +151,7 @@ def publish(
             "FAIL_LIST": str(int(fail_list)),
             "FAIL_POST": str(int(fail_push)),
             "FAIL_LARGE": str(int(fail_large)),
+            "FAIL_FOLLOWUP": str(int(fail_followup)),
             "STAGE": stage,
             "MODEL": "provider/model",
             "GITHUB_RUN_ID": "123",
@@ -180,6 +186,7 @@ def publish(
         if (
             remote_head != HEAD_SHA
             or fail_push
+            or fail_followup
             or remote_state != "open"
             or remote_base != "master"
         ):
@@ -430,6 +437,39 @@ class TestPublish(unittest.TestCase):
         self.assertFalse(
             any(marker in line for line in log if line.startswith("notice "))
         )
+        self.assertEqual(output, "review_url=https://example.test/review/3\n")
+
+    def test_split_fallback_posts_approval_after_findings(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "λ" * 33000})
+        log, review = publish(APPROVED, comments=comments, fail_large=True)
+        self.assertEqual(review["event"], "COMMENT")
+        posts = [line for line in log if "api -X POST" in line]
+        self.assertGreaterEqual(len(posts), 4)
+        self.assertEqual(
+            [line for line in log if line.startswith("posted ")][-1], "posted APPROVE"
+        )
+
+    def test_failed_continuation_does_not_approve(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "λ" * 33000})
+        status, log = publish(
+            APPROVED, comments=comments, fail_large=True, fail_followup=True
+        )
+        self.assertNotEqual(status, 0)
+        self.assertNotIn("posted APPROVE", log)
+        self.assertEqual(dismissals(log), [])
+
+    def test_split_approval_marks_the_final_review(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "λ" * 33000})
+        log, review, output = publish(
+            APPROVED,
+            comments=comments,
+            fail_large=True,
+            ci_aware=True,
+            capture_output=True,
+        )
+        marker = "<!-- ai-review-run 123-1 -->"
+        self.assertNotIn(marker, review["body"])
+        self.assertIn(marker, [line for line in log if line.startswith("notice ")][-1])
         self.assertEqual(output, "review_url=https://example.test/review/3\n")
 
 

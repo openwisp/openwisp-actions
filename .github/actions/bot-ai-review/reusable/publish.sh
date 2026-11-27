@@ -92,10 +92,16 @@ if ! post_review >"$RESPONSE" 2>"$ERROR"; then
       '[$body as $text | range(0; ($text | length); 30000) as $i | $text[$i:($i + 30000)]]' >"$CHUNKS"
     jq -rj '.[0]' "$CHUNKS" >"$BODY_FILE"
     CHUNK_COUNT=$(jq 'length' "$CHUNKS")
+    SPLIT_APPROVAL=false
     if [ "$CHUNK_COUNT" -gt 1 ]; then
       printf '\n\nContinued in the following review comments.' >>"$BODY_FILE"
+      # Do not approve until every part of the review is visible.
+      if [ "$EVENT" = approve ]; then
+        EVENT=comment
+        SPLIT_APPROVAL=true
+      fi
     fi
-    if [ "${CI_AWARE:-false}" = true ]; then
+    if [ "${CI_AWARE:-false}" = true ] && [ "$SPLIT_APPROVAL" = false ]; then
       printf '\n\n%s' "$REVIEW_MARKER" >>"$BODY_FILE"
     fi
     jq -n '[]' >"$COMMENTS"
@@ -105,6 +111,16 @@ if ! post_review >"$RESPONSE" 2>"$ERROR"; then
         '{body: $chunks[0][$index], commit_id: $commit, event: "COMMENT"}' |
         gh api -X POST "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --input - --silent
     done
+    if [ "$SPLIT_APPROVAL" = true ]; then
+      EVENT=approve
+      printf "AI %s of %s provided by \`%s\` / \`%s\`\n\n**Verdict: %s**\n\n" \
+        "$STAGE" "$HEAD_SHA" "${MODEL%%/*}" "${MODEL#*/}" "$VERDICT" >"$BODY_FILE"
+      printf 'See the preceding review comments.' >>"$BODY_FILE"
+      if [ "${CI_AWARE:-false}" = true ]; then
+        printf '\n\n%s' "$REVIEW_MARKER" >>"$BODY_FILE"
+      fi
+      post_review >/dev/null
+    fi
   else
     cat "$ERROR" >&2
     exit 1

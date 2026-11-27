@@ -44,6 +44,14 @@ Then, only if the direction looks right, check:
 4. Race conditions: concurrent requests, background tasks, retries,
    overlapping updates.
 5. Maintainability and the rules in the attached guidance file.
+   Check whether non-obvious decisions and side effects have a short comment
+   explaining why they are needed. Do not request comments that merely repeat
+   what the code does.
+6. Documentation: check for a concise, current overview that answers readers'
+   practical questions, with more detail where useful. It should be easy to
+   scan and link to existing guidance instead of duplicating it. Do not translate
+   code into prose or enumerate edge cases; explain non-obvious implementation
+   decisions in code comments instead.
 
 Review all kinds of changed files relevant to the change, including tests,
 scripts, documentation, migrations, CI and configuration.
@@ -97,4 +105,8 @@ Reply with ONLY this JSON and nothing else:
 Write the summary as two to four short bullets about the direction and
 the main concerns.
 
-Use "Looks good" only when there are no P1 or P2 findings.
+Use "Looks good" only when there are no P1 or P2 findings and no CI job
+fails because of the change. When a CI job fails, find out whether the
+change causes it, for example by running the failing test. If you cannot
+rule out that the change causes it, use "Needs changes" and name the
+failing job and what you could not verify in the summary.

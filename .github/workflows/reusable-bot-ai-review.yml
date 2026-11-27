@@ -48,6 +48,7 @@ jobs:
       ci_attempt: ${{ steps.coordinate.outputs.attempt }}
       ci_standard_status: ${{ steps.ci-standardization.outputs.status }}
       ci_standard_missing: ${{ steps.ci-standardization.outputs.missing }}
+      runner: ${{ steps.runner.outputs.runner }}
     steps:
       - &trusted_checkout
         name: Checkout reusable workflow
@@ -144,6 +145,15 @@ jobs:
           BASE_SHA: ${{ steps.coordinate.outputs.base_sha }}
         run: python3 openwisp-actions/.github/actions/bot-ai-review/reusable/check_ci_standardization.py
 
+      - name: Select review runner
+        if: steps.coordinate.outputs.stage != ''
+        id: runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BASE_SHA: ${{ steps.coordinate.outputs.base_sha }}
+        run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/select_runner.sh
+
       - name: Generate shared guidance token
         if: steps.coordinate.outputs.stage != ''
         id: guidance-token
@@ -203,7 +213,7 @@ jobs:
     name: Run ${{ needs.gate.outputs.stage }}
     needs: gate
     if: needs.gate.outputs.stage != ''
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.gate.outputs.runner || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       PR_DIR: /tmp/ai-review/pr
@@ -217,7 +227,15 @@ jobs:
       contents: read
       issues: read # Reads the issues linked in the pull request description.
       pull-requests: read # Reads the pull request description, reviews and comments.
+    outputs:
+      setup_failed: ${{ steps.deps.outcome == 'failure' }}
     steps:
+      - name: Require a GitHub-hosted review runner
+        if: runner.environment != 'github-hosted'
+        run: |
+          echo "::error::AI reviews require a GitHub-hosted runner"
+          exit 1
+
       - name: Checkout trusted revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -414,6 +432,7 @@ jobs:
 
       - name: Install trusted CI dependencies
         if: steps.ci.outcome == 'success'
+        id: deps
         env:
           DEFAULT_SHA: ${{ github.sha }} # issue_comment runs at the caller's default branch.
           PREPARE_PYTHON: ${{ steps.python.outcome == 'success' || steps.qa-python.outcome == 'success' }}
@@ -450,6 +469,7 @@ jobs:
           SE_CHROME: ${{ steps.chrome.outputs.chrome-path }}
           SE_CHROMEDRIVER: ${{ steps.chrome.outputs.chromedriver-path }}
           GECKO_BIN: ${{ steps.firefox.outputs.firefox_path }}
+          ALLOW_ENV_FILES: ${{ contains(fromJSON('["openwisp/docker-openwisp"]'), github.repository) }}
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/run_review.sh
 
       - name: Upload findings
@@ -595,6 +615,8 @@ jobs:
           RECORD_ID: ${{ needs.gate.outputs.record_id }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
           REVIEW_URL: ${{ needs.publish.outputs.review_url }}
+          SETUP_FAILED: ${{ needs.review.outputs.setup_failed }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python3 openwisp-actions/.github/actions/bot-ai-review/reusable/finish_ci_request.py
 
   ci-completion:

@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import unittest
 
+import yaml
+
 SCRIPT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "reusable",
@@ -100,6 +102,7 @@ class TestRunReview(unittest.TestCase):
         split_event=False,
         rotated_auth=None,
         refreshed_auth=None,
+        allow_env_files=False,
     ):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -134,6 +137,7 @@ class TestRunReview(unittest.TestCase):
                 "  exit 0\n"
                 "fi\n"
                 'printf \'%s\\n\' "$@" >"$RUNNER_TEMP/args"\n'
+                'cp "$OPENCODE_CONFIG" "$RUNNER_TEMP/config.json"\n'
                 # Stand in for OpenCode replacing a token before reporting a tool call.
                 'if [ -n "${ROTATED_AUTH:-}" ]; then\n'
                 '  printf \'%s\' "$ROTATED_AUTH" >"$XDG_DATA_HOME/opencode/auth.json"\n'
@@ -190,6 +194,7 @@ class TestRunReview(unittest.TestCase):
             "SPLIT_EVENT": "1" if split_event else "",
             "ROTATED_AUTH": json.dumps(rotated_auth) if rotated_auth else "",
             "REFRESHED_AUTH": json.dumps(refreshed_auth) if refreshed_auth else "",
+            "ALLOW_ENV_FILES": "true" if allow_env_files else "false",
         }
         if wait_file:
             process = subprocess.Popen(
@@ -375,6 +380,32 @@ class TestRunReview(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         with open(os.path.join(root, "args")) as f:
             self.assertIn(f"{root}/data/ci-results.json", f.read().splitlines())
+
+    def test_env_files_are_readable_only_when_allowed(self):
+        event = {"type": "text", "part": {"text": "not JSON"}}
+        for allowed in (False, True):
+            with self.subTest(allowed=allowed):
+                root, result = self.run_review(event, allow_env_files=allowed)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with open(os.path.join(root, "config.json")) as f:
+                    permission = json.load(f)["permission"]
+                self.assertEqual(
+                    permission.get("read", {}).get("*.env"),
+                    "allow" if allowed else None,
+                )
+                self.assertEqual(permission["external_directory"]["*"], "deny")
+
+    def test_only_allowlisted_repositories_read_env_files(self):
+        path = os.path.join(
+            os.path.dirname(__file__), "../../../workflows/reusable-bot-ai-review.yml"
+        )
+        with open(path) as f:
+            steps = yaml.safe_load(f)["jobs"]["review"]["steps"]
+        step = next(item for item in steps if item.get("name") == "Run review")
+        self.assertEqual(
+            step["env"]["ALLOW_ENV_FILES"],
+            "${{ contains(fromJSON('[\"openwisp/docker-openwisp\"]'), github.repository) }}",
+        )
 
     def test_failed_model_run_logs_error_event(self):
         event = {

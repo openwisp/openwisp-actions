@@ -59,8 +59,10 @@ if [ "$CURRENT_BASE" != "$BASE_REF" ]; then
   echo "::error::The pull request base changed during the review; request another review"
   exit 1
 fi
+BODY_FILE="$RUNNER_TEMP/review-body.txt"
+printf '%s' "$BODY" >"$BODY_FILE"
 post_review() {
-  jq -n --arg body "$BODY" --arg event "$EVENT" --arg commit "$HEAD_SHA" \
+  jq -n --rawfile body "$BODY_FILE" --arg event "$EVENT" --arg commit "$HEAD_SHA" \
     --slurpfile comments "$COMMENTS" '{
     body: $body,
     commit_id: $commit,
@@ -78,10 +80,31 @@ if ! post_review >"$RESPONSE" 2>"$ERROR"; then
   if [ "$(jq 'length' "$COMMENTS")" -gt 0 ] && \
     [[ "$STATUS" =~ ^HTTP/[0-9.]+[[:space:]]422[[:space:]] ]] && \
     grep -Fq 'Diff entry ' "$RESPONSE" && grep -Fq 'diff is too large' "$RESPONSE"; then
-    BODY+=$'\n\n**Inline findings (GitHub could not display the diff):**\n\n'
-    BODY+=$(jq -r '.[] | "- `\(.file):\(.line)`\n\n\(.body)\n"' "$COMMENTS")
+    # Keep the run marker in the first review so CI-aware requests can find it.
+    if [ "${CI_AWARE:-false}" = true ]; then
+      BODY=${BODY%$'\n\n'"$REVIEW_MARKER"}
+    fi
+    printf '%s\n\n**Inline findings (GitHub could not display the diff):**\n\n' "$BODY" >"$BODY_FILE"
+    jq -r '.[] | "- `\(.file):\(.line)`\n\n\(.body)\n"' "$COMMENTS" >>"$BODY_FILE"
+    CHUNKS="$RUNNER_TEMP/review-chunks.json"
+    # 30,000 Unicode characters also fit if GitHub counts UTF-16 code units.
+    jq -n --rawfile body "$BODY_FILE" \
+      '[$body as $text | range(0; ($text | length); 30000) as $i | $text[$i:($i + 30000)]]' >"$CHUNKS"
+    jq -rj '.[0]' "$CHUNKS" >"$BODY_FILE"
+    CHUNK_COUNT=$(jq 'length' "$CHUNKS")
+    if [ "$CHUNK_COUNT" -gt 1 ]; then
+      printf '\n\nContinued in the following review comments.' >>"$BODY_FILE"
+    fi
+    if [ "${CI_AWARE:-false}" = true ]; then
+      printf '\n\n%s' "$REVIEW_MARKER" >>"$BODY_FILE"
+    fi
     jq -n '[]' >"$COMMENTS"
     post_review >/dev/null
+    for ((INDEX = 1; INDEX < CHUNK_COUNT; INDEX++)); do
+      jq -n --slurpfile chunks "$CHUNKS" --argjson index "$INDEX" --arg commit "$HEAD_SHA" \
+        '{body: $chunks[0][$index], commit_id: $commit, event: "COMMENT"}' |
+        gh api -X POST "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" --input - --silent
+    done
   else
     cat "$ERROR" >&2
     exit 1

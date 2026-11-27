@@ -458,7 +458,8 @@ restricts who can dismiss reviews, must be allowed to dismiss them in the
 `branch protection settings
 <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#restrict-who-can-dismiss-pull-request-reviews>`_.
 If GitHub rejects an inline finding because its diff entry is too large,
-the review includes all inline findings in its summary instead.
+the review includes all inline findings in its summary instead. Long
+fallbacks continue in additional review comments.
 
 To verify its findings, the model can search the web, fetch pages, edit a
 temporary copy of the pull request and run allowed commands, such as

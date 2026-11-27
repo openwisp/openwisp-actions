@@ -44,13 +44,16 @@ case "$*" in
   "api -X POST "*)
     cat >"$STATE/request.json"
     if [ "${FAIL_POST:-}" = 1 ]; then echo 'network failure' >&2; exit 1; fi
+    if jq -e '(.body | length) > 65536' "$STATE/request.json" >/dev/null; then
+      echo 'gh: body is too long (HTTP 422)' >&2; exit 1
+    fi
     if [ "${FAIL_LARGE:-}" = 1 ] && jq -e '.comments | length > 0' "$STATE/request.json" >/dev/null; then
       printf 'HTTP/2.0 422 Unprocessable Entity\r\nContent-Type: application/json\r\n\r\n'
       echo '{"message":"Validation Failed","errors":[{"message":"Diff entry a.py diff is too large"}]}'
       echo 'gh: Validation Failed (HTTP 422)' >&2; exit 1
     fi
     if [ -f "$STATE/review.json" ]; then
-      cp "$STATE/request.json" "$STATE/notice.json"
+      jq -c . "$STATE/request.json" >>"$STATE/notices.jsonl"
     else
       cp "$STATE/request.json" "$STATE/review.json"
     fi ;;
@@ -169,10 +172,11 @@ def publish(
                 review = json.load(f)
         else:
             review = None
-        notice_path = os.path.join(state, "notice.json")
+        notice_path = os.path.join(state, "notices.jsonl")
         if os.path.exists(notice_path):
             with open(notice_path) as f:
-                log.append("notice " + json.load(f)["body"])
+                for line in f:
+                    log.append("notice " + json.loads(line)["body"])
         if (
             remote_head != HEAD_SHA
             or fail_push
@@ -402,6 +406,31 @@ class TestPublish(unittest.TestCase):
         self.assertIn("b.py:9", review["body"])
         self.assertIn("details", review["body"])
         self.assertEqual(len(dismissals(log)), 1)
+
+    def test_large_diff_fallback_splits_long_findings(self):
+        comments = (
+            {"file": "a.py", "line": 1, "body": "λ" * 33000},
+            {"file": "b.py", "line": 9, "body": "Ω" * 33000},
+        )
+        log, review = publish(CHANGES, comments=comments, fail_large=True)
+        notices = "".join(line[7:] for line in log if line.startswith("notice "))
+        combined = review["body"] + notices
+        self.assertIn("a.py:1", combined)
+        self.assertIn("b.py:9", combined)
+        self.assertEqual(combined.count("λ"), 33000)
+        self.assertEqual(combined.count("Ω"), 33000)
+
+    def test_split_fallback_keeps_ci_marker_in_first_review(self):
+        findings = {**CHANGES, "summary": "λ" * 33000}
+        log, review, output = publish(
+            findings, fail_large=True, ci_aware=True, capture_output=True
+        )
+        marker = "<!-- ai-review-run 123-1 -->"
+        self.assertIn(marker, review["body"])
+        self.assertFalse(
+            any(marker in line for line in log if line.startswith("notice "))
+        )
+        self.assertEqual(output, "review_url=https://example.test/review/3\n")
 
 
 if __name__ == "__main__":

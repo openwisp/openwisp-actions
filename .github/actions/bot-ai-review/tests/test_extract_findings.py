@@ -1,14 +1,11 @@
 """Test validation and extraction of AI review findings."""
 
-import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
-from unittest.mock import patch
 
 SCRIPTS = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reusable"
@@ -20,7 +17,6 @@ from extract_findings import (  # noqa: E402
     MAX_COMMENTS,
     VERDICTS,
     find_json,
-    main,
     parse_diff,
     perimeter,
     validate,
@@ -391,11 +387,18 @@ class TestMain(unittest.TestCase):
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(content)
                 paths.append(path)
-            stdout = io.StringIO()
-            with patch.object(sys, "argv", ["extract_findings.py", *paths, stage]):
-                with redirect_stdout(stdout):
-                    main()
-        return json.loads(stdout.getvalue())
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    os.path.join(SCRIPTS, "extract_findings.py"),
+                    *paths,
+                    stage,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        return json.loads(result.stdout)
 
     def test_falls_back_on_invalid_output(self):
         result = self.run_main("\x1b[31mError\x1b[0m")
@@ -439,6 +442,19 @@ class TestMain(unittest.TestCase):
         )
         result = self.run_main(output, stage="security-review")
         self.assertEqual(result["verdict"], FALLBACK["verdict"])
+
+    def test_recovers_latest_review_before_earlier_valid_review(self):
+        output = (
+            'Earlier draft: {"verdict":"No issues found","title":"Draft",'
+            '"summary":"No issues","comments":[]}\n'
+            'Final answer: {"verdict":"Issues found","title":"Final",'
+            '"summary":"- Bug", "- More details",'
+            '"comments":[{"file":"app.py","line":2,"severity":"P1",'
+            '"title":"Bug","body":"Details"}]}'
+        )
+        result = self.run_main(output, stage="security-review")
+        self.assertEqual(result["verdict"], "Issues found")
+        self.assertEqual(len(result["comments"]), 1)
 
     def test_falls_back_on_wrong_types(self):
         result = self.run_main('{"verdict": [], "title": "T", "summary": "S"}')

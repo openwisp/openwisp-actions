@@ -56,10 +56,15 @@ FALLBACK = {
 def decode(text):
     decoder = json.JSONDecoder(strict=False)
     for start in reversed([m.start() for m in re.finditer(r"\{", text)]):
+        candidate = text[start:]
         try:
-            data, _ = decoder.raw_decode(text, start)
+            data, _ = decoder.raw_decode(candidate)
         except json.JSONDecodeError:
-            continue
+            # Repair this candidate before considering an earlier complete draft.
+            try:
+                data, _ = decoder.raw_decode(SPLIT_SUMMARY.sub(join_summary, candidate))
+            except json.JSONDecodeError:
+                continue
         if isinstance(data, dict) and "verdict" in data:
             return data
     return None
@@ -75,7 +80,7 @@ def join_summary(match):
 
 
 def find_json(text):
-    return decode(text) or decode(SPLIT_SUMMARY.sub(join_summary, text))
+    return decode(text)
 
 
 def parse_finding(comment):

@@ -411,6 +411,7 @@ class TestCIRequests(unittest.TestCase):
 
     def test_resume_records_the_workflow_that_actually_starts_the_review(self):
         dispatch = {
+            "id": 10,
             "body": "/ai-review-resume 9",
             "performed_via_github_app": {"id": 42},
         }
@@ -439,10 +440,14 @@ class TestCIRequests(unittest.TestCase):
             def update(self, comment_id, body):
                 self.body = body
 
+            def delete(self, comment_id):
+                self.deleted = comment_id
+
         api = API()
         result = coordinate(
             api, 42, "openwisp/repo", 17, {}, dispatch, review_run_id=777
         )
+        self.assertEqual(api.deleted, 10)
         self.assertIn('"review_run_id":777', api.body)
         self.assertEqual(result["review_run_id"], 777)
 
@@ -846,6 +851,9 @@ class TestCIRequests(unittest.TestCase):
             def update(self, number, body):
                 self.items[number - 1]["body"] = body
 
+            def delete(self, number):
+                pass
+
             def ci_run(self, current):
                 return run
 
@@ -1164,3 +1172,28 @@ class TestCIRequests(unittest.TestCase):
         api = API()
         finish(api, 42, 17, 9, "success")
         self.assertIn("review completed, but the link is unavailable", api.body)
+
+    def test_failed_review_explains_whether_another_request_can_help(self):
+        record = {
+            **self.comment,
+            "body": record_body({**self.request, "state": "reviewing"}, "Reviewing."),
+        }
+
+        class API:
+            def comment(self, comment_id):
+                return record
+
+            def pull(self, pr_number):
+                return {"state": "open", "head": {"sha": "a" * 40}}
+
+            def update(self, comment_id, body):
+                self.body = body
+
+        for setup_failed, expected in (
+            (False, "review did not complete ([run](run)). Request another review."),
+            (True, "review could not install the CI dependencies ([run](run))"),
+        ):
+            with self.subTest(setup_failed=setup_failed):
+                api = API()
+                finish(api, 42, 17, 9, "skipped", "", setup_failed, "run")
+                self.assertIn(f"Update: {expected}", api.body)

@@ -13,6 +13,8 @@ def main():
         int(os.environ["RECORD_ID"]),
         os.environ["PUBLISH_RESULT"],
         os.environ.get("REVIEW_URL", ""),
+        os.environ.get("SETUP_FAILED") == "true",
+        os.environ.get("RUN_URL", ""),
     )
 
 

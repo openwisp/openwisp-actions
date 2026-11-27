@@ -142,6 +142,10 @@ def coordinate(
         comment = resume_record(api, dispatch, app_id, repository, pr_number)
         if comment is None:
             return {}
+        try:
+            api.delete(dispatch["id"])
+        except (subprocess.SubprocessError, OSError):
+            pass
         request = parse_record(comment, app_id)
     else:
         request = {**request, "repository": repository, "pr_number": pr_number}
@@ -196,7 +200,16 @@ def wake(api, app_id, run):
                 api.create(pr_number, f"/ai-review-resume {comment['id']}")
 
 
-def finish(api, app_id, pr_number, comment_id, publication_result, review_url=""):
+def finish(
+    api,
+    app_id,
+    pr_number,
+    comment_id,
+    publication_result,
+    review_url="",
+    setup_failed=False,
+    run_url="",
+):
     comment = api.comment(comment_id)
     request = parse_record(comment, app_id)
     if not request or request.get("state") != "reviewing":
@@ -209,8 +222,13 @@ def finish(api, app_id, pr_number, comment_id, publication_result, review_url=""
         update = f"[review completed]({review_url})."
     elif publication_result == "success":
         update = "review completed, but the link is unavailable."
+    elif setup_failed:
+        update = (
+            f"review could not install the CI dependencies ([run]({run_url})). "
+            "Check the installer log before requesting another review."
+        )
     else:
-        update = "review did not complete. Request another review."
+        update = f"review did not complete ([run]({run_url})). Request another review."
     waiting = request.get("waiting_message")
     message = f"{waiting}\n\nUpdate: {update}" if waiting else f"Update: {update}"
     api.update(comment_id, record_body(request, message))
@@ -425,6 +443,19 @@ class GitHub:
     def update(self, comment_id, body):
         endpoint = f"repos/{self.repository}/issues/comments/{comment_id}"
         self.write("PATCH", endpoint, body)
+
+    def delete(self, comment_id):
+        subprocess.run(
+            [
+                "gh",
+                "api",
+                "--method",
+                "DELETE",
+                f"repos/{self.repository}/issues/comments/{comment_id}",
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
 
     def write(self, method, endpoint, body):
         output = subprocess.check_output(

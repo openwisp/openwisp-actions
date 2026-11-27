@@ -463,6 +463,12 @@ the OpenWISP bot from the ``AGENTS.md`` of `openwisp-opencode-configs
 missing, the review notes it in its summary. Each review is limited to 50
 minutes, and the model is told about the limit so it replies in time.
 
+The model cannot read ``.env`` files, which often contain credentials.
+Only the repositories in an allowlist in the reusable workflow, which
+commit a ``.env`` file without secrets, can read it: currently
+docker-openwisp, whose ``.env`` is its default configuration. Reads stay
+limited to the pull request checkout.
+
 CI-aware reviews
 ++++++++++++++++
 
@@ -540,13 +546,16 @@ with ``review_default: true``. Declare required browsers with
 ``AI_REVIEW_BROWSERS``. See the `review workflow
 <.github/workflows/reusable-bot-ai-review.yml>`_ and `CI cache action
 <.github/actions/ci-cache/action.yml>`_ for the supported settings.
-Without standardized CI, reviews continue without dependency setup. The
-installer receives ``CI=true`` and direct matrix references in the test
-job and dependency step environment. Other expressions are not evaluated.
-If a ``django-version`` axis is present, it takes precedence over a
-``DJANGO_VERSION`` value from another axis. When CI selects Python, the
-review creates a virtual environment at the repository root as ``.venv``
-and uses it for dependency installation and review commands.
+Without standardized CI, reviews continue without dependency setup.
+Reviews run on the runner image of the CI test job on the target branch
+when it is a GitHub-hosted ``ubuntu-latest`` or ``ubuntu-NN.NN`` label,
+and on ``ubuntu-latest`` otherwise. The installer receives ``CI=true`` and
+direct matrix references in the test job and dependency step environment.
+Other expressions are not evaluated. If a ``django-version`` axis is
+present, it takes precedence over a ``DJANGO_VERSION`` value from another
+axis. When CI selects Python, the review creates a virtual environment at
+the repository root as ``.venv`` and uses it for dependency installation
+and review commands.
 
 The unprivileged installer and review commands require Linux Landlock ABI
 3 or newer. The workflow refuses to start either process if it cannot

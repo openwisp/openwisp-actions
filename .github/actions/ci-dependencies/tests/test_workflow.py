@@ -53,3 +53,14 @@ def test_review_services_start_after_setup_and_are_cleaned_up():
     assert steps.index(stop) > steps.index(by_name["Run review"])
     assert start["env"]["DEFAULT_SHA"] == "${{ github.sha }}"
     assert "always()" in stop["if"]
+
+
+def test_review_receives_the_selected_molecule_distro():
+    workflow = (
+        Path(__file__).resolve().parents[3] / "workflows/reusable-bot-ai-review.yml"
+    )
+    steps = yaml.safe_load(workflow.read_text())["jobs"]["review"]["steps"]
+    review = next(step for step in steps if step.get("name") == "Run review")
+    assert review["env"]["MOLECULE_DISTRO"] == (
+        "${{ fromJSON(steps.ci.outputs.installer_env || '{}').MOLECULE_DISTRO || '' }}"
+    )

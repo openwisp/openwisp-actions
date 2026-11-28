@@ -24,6 +24,7 @@ exec sudo -n -- /usr/bin/env -i /usr/bin/unshare --mount --propagation private /
   XDG_CONFIG_HOME=/home/reviewer/.config XDG_CACHE_HOME=/home/reviewer/.cache \
   XDG_DATA_HOME=/home/reviewer/.local/share "PATH=/home/reviewer/.local/bin:$PATH" \
   CI_DEPS_CACHE=/home/reviewer/.cache/ci-deps \
+  "MOLECULE_DISTRO=${MOLECULE_DISTRO:-}" \
   "SE_CHROME=${SE_CHROME:-}" "SE_CHROMEDRIVER=${SE_CHROMEDRIVER:-}" \
   "CHROME_BIN=${SE_CHROME:-}" "GECKO_BIN=${GECKO_BIN:-}" SELENIUM_HEADLESS=1 /bin/bash -c '
 /usr/local/bin/ai-review-sync /tmp/ai-review/pr /tmp/ai-review/run "$HOME/.ai-review-files" || exit 1

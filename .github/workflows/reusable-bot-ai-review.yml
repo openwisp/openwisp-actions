@@ -476,6 +476,7 @@ jobs:
           SE_CHROME: ${{ steps.chrome.outputs.chrome-path }}
           SE_CHROMEDRIVER: ${{ steps.chrome.outputs.chromedriver-path }}
           GECKO_BIN: ${{ steps.firefox.outputs.firefox_path }}
+          MOLECULE_DISTRO: ${{ fromJSON(steps.ci.outputs.installer_env || '{}').MOLECULE_DISTRO || '' }}
           ALLOW_ENV_FILES: ${{ contains(fromJSON('["openwisp/docker-openwisp"]'), github.repository) }}
         run: bash openwisp-actions/.github/actions/bot-ai-review/reusable/run_review.sh
 

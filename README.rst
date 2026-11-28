@@ -589,6 +589,12 @@ head. Services, builds, and tests remain separate from installation. The
 ``./runtests`` entry point must allowlist reviewed test flags; argument
 validation does not sandbox untrusted test code or configuration.
 
+For focused tests that need services, set ``AI_REVIEW_SERVICES`` in the CI
+test job to ``redis``, ``influxdb``, or ``redis,influxdb``. The review
+starts those services from the default branch's Compose file and removes
+them after the review. Compose must resolve with only ``HOME``, ``PATH``,
+and ``CI`` inherited from the runner.
+
 To run the AI review tests from the repository root:
 
 .. code-block:: shell

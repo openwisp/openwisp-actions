@@ -592,6 +592,15 @@ head. Services, builds, and tests remain separate from installation. The
 ``./runtests`` entry point must allowlist reviewed test flags; argument
 validation does not sandbox untrusted test code or configuration.
 
+For APT packages, CI can use the `APT cache action
+<.github/actions/apt-cache/action.yml>`_ in ``write`` mode before the
+installer. Pass the runner's ``ImageOS`` and ``ImageVersion`` as
+``image-os`` and ``image-version``. Use ``variant`` and
+``AI_REVIEW_CACHE_AXES`` when matrix values change the package list.
+Reviews restore matching archives without saving them. APT verifies
+packages during installation, and a cache miss falls back to downloading
+them.
+
 For focused tests that need services, set ``AI_REVIEW_SERVICES`` in the CI
 test job to ``redis``, ``influxdb``, or ``redis,influxdb``. The review
 starts those services from the default branch's Compose file and removes

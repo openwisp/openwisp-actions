@@ -1,0 +1,41 @@
+name: Cache APT downloads
+description: Reuse APT archives between trusted CI and review runs.
+inputs:
+  mode:
+    description: Use write in CI and restore in review.
+    required: true
+  image-os:
+    description: GitHub runner image identifier.
+    required: true
+  image-version:
+    description: GitHub runner image version.
+    required: true
+  variant:
+    description: Optional matrix values that affect system dependencies.
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Configure APT archive directory
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+      run: |
+        case "$MODE" in write|restore) ;; *) echo "Invalid cache mode" >&2; exit 1 ;; esac
+        bash "$GITHUB_ACTION_PATH/setup.sh"
+    - name: Restore or save APT archives
+      if: inputs.mode == 'write'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/apt-ci/archives/*.deb
+        key: >-
+          ${{ format('apt-{0}-{1}-{2}-{3}-{4}-{5}', runner.os, runner.arch, inputs.image-os,
+              inputs.image-version, inputs.variant, hashFiles('install-ci-deps.sh', 'install-dev.sh')) }}
+    - name: Restore APT archives for review
+      if: inputs.mode == 'restore'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/apt-ci/archives/*.deb
+        key: >-
+          ${{ format('apt-{0}-{1}-{2}-{3}-{4}-{5}', runner.os, runner.arch, inputs.image-os,
+              inputs.image-version, inputs.variant, hashFiles('install-ci-deps.sh', 'install-dev.sh')) }}

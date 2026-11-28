@@ -61,3 +61,7 @@ You are reviewing an OpenWISP pull request.
   Include the test as an actionable code suggestion in the inline comment, along
   with where to put it, how to run it and the observed result. Use GitHub suggestion
   syntax only if it applies to the commented lines; otherwise use a code block.
+- **Dependency tests:** a dependency's own behavior belongs in its test suite.
+  Do not require callers to duplicate those tests. Test behavior owned by the caller
+  when needed. An exception that tests a dependency's behavior in a caller must have
+  a thorough, convincing code comment explaining why the caller needs that test.

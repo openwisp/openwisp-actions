@@ -39,3 +39,17 @@ def test_django_cache_includes_test_requirements():
     steps = yaml.safe_load(workflow.read_text())["jobs"]["review"]["steps"]
     cache = next(step for step in steps if step.get("name") == "Restore Django cache")
     assert "'requirements-test.txt'" in cache["with"]["key"]
+
+
+def test_review_services_start_after_setup_and_are_cleaned_up():
+    workflow = (
+        Path(__file__).resolve().parents[3] / "workflows/reusable-bot-ai-review.yml"
+    )
+    steps = yaml.safe_load(workflow.read_text())["jobs"]["review"]["steps"]
+    by_name = {step.get("name"): step for step in steps}
+    start = by_name["Start review services"]
+    stop = by_name["Stop review services"]
+    assert steps.index(start) > steps.index(by_name["Install trusted CI dependencies"])
+    assert steps.index(stop) > steps.index(by_name["Run review"])
+    assert start["env"]["DEFAULT_SHA"] == "${{ github.sha }}"
+    assert "always()" in stop["if"]

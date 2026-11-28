@@ -443,6 +443,13 @@ jobs:
           INSTALLER_ENV: ${{ steps.ci.outputs.installer_env }}
         run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/prepare_review.sh
 
+      - name: Start review services
+        if: steps.ci.outcome == 'success'
+        id: services
+        env:
+          DEFAULT_SHA: ${{ github.sha }}
+        run: bash openwisp-actions/.github/actions/ci-dependencies/reusable/review_services.sh start
+
       - name: Configure provider credentials
         if: vars.OPENCODE_PROVIDER == 'github-copilot'
         env:
@@ -478,6 +485,15 @@ jobs:
           name: ai-review-findings
           path: ${{ runner.temp }}/findings.json
           retention-days: 1
+
+      - name: Stop review services
+        if: always() && steps.services.outputs.directory != ''
+        env:
+          SERVICE_DIRECTORY: ${{ steps.services.outputs.directory }}
+          SERVICE_PROJECT: ${{ steps.services.outputs.project }}
+        run: |
+          bash openwisp-actions/.github/actions/ci-dependencies/reusable/review_services.sh \
+            stop "$SERVICE_DIRECTORY" "$SERVICE_PROJECT"
 
   publish:
     name: Publish review

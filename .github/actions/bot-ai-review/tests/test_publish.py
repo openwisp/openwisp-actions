@@ -218,7 +218,7 @@ class TestPublish(unittest.TestCase):
     def test_changed_head_stops_publication_and_dismissal(self):
         status, log = publish(CHANGES, remote_head="b" * 40)
         self.assertNotEqual(status, 0)
-        self.assertFalse(any(line.startswith("crit") for line in log))
+        self.assertFalse(any("api -X POST" in line for line in log))
         self.assertEqual(dismissals(log), [])
 
     def test_failed_publication_does_not_dismiss_reviews(self):
@@ -256,7 +256,7 @@ class TestPublish(unittest.TestCase):
         for findings, event in cases:
             with self.subTest(verdict=findings["verdict"]):
                 log, review = publish(findings, comments=())
-                self.assertFalse(any(line.startswith("crit") for line in log))
+                self.assertEqual(sum("api -X POST" in line for line in log), 1)
                 self.assertEqual(review["event"], event)
                 self.assertEqual(review["commit_id"], HEAD_SHA)
                 self.assertNotIn("comments", review)

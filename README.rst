@@ -567,7 +567,10 @@ test job and dependency step environment. Other expressions are not
 evaluated. If a ``django-version`` axis is present, it takes precedence
 over a ``DJANGO_VERSION`` value from another axis. When CI selects Python,
 the review creates a virtual environment at the repository root as
-``.venv`` and uses it for dependency installation and review commands.
+``.venv`` and uses it for dependency installation and review commands. If
+the selected matrix sets ``MOLECULE_DISTRO`` in the job or dependency
+step, review commands receive the same value. Other installer environment
+variables are not passed to review commands.
 
 The unprivileged installer and review commands require Linux Landlock ABI
 3 or newer. The workflow refuses to start either process if it cannot

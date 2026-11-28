@@ -34,6 +34,7 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
         "SE_CHROME": "/opt/chrome/chrome",
         "SE_CHROMEDRIVER": "/opt/chrome/chromedriver",
         "GECKO_BIN": "/usr/bin/firefox",
+        "MOLECULE_DISTRO": "ubuntu2404",
     }
     result = subprocess.run(
         [str(SCRIPT), "-c", "true"], env=env, capture_output=True, text=True
@@ -48,6 +49,7 @@ def test_sandbox_uses_reviewer_configuration_and_drops_runner_environment(tmp_pa
     assert environment["GECKO_BIN"] == "/usr/bin/firefox"
     assert environment["SELENIUM_HEADLESS"] == "1"
     assert environment["CI_DEPS_CACHE"] == "/home/reviewer/.cache/ci-deps"
+    assert environment["MOLECULE_DISTRO"] == "ubuntu2404"
     assert "NPM_CONFIG_USERCONFIG" not in environment
     assert "SECRET_SENTINEL" not in environment
 

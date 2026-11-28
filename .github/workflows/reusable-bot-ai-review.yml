@@ -358,7 +358,9 @@ jobs:
       - name: Identify runner image
         if: steps.ci.outcome == 'success'
         id: platform
-        run: echo "image_os=$ImageOS" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "image_os=$ImageOS" >> "$GITHUB_OUTPUT"
+          echo "image_version=$ImageVersion" >> "$GITHUB_OUTPUT"
 
       - name: Locate Yarn cache
         if: hashFiles('yarn.lock') != '' && steps.node.outcome == 'success'
@@ -424,6 +426,15 @@ jobs:
           python-version: ${{ steps.python.outputs.python-version || steps.qa-python.outputs.python-version }}
           node-version: ${{ steps.node.outputs.node-version }}
           django-version: ${{ steps.ci.outputs.django_version }}
+          variant: ${{ steps.ci.outputs.extra_cache_variant }}
+
+      - name: Restore APT downloads
+        if: steps.ci.outputs.system_deps == 'true'
+        uses: $/.github/actions/apt-cache
+        with:
+          mode: restore
+          image-os: ${{ steps.platform.outputs.image_os }}
+          image-version: ${{ steps.platform.outputs.image_version }}
           variant: ${{ steps.ci.outputs.extra_cache_variant }}
 
       - name: Install OpenCode

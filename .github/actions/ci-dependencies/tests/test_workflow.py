@@ -64,3 +64,15 @@ def test_review_receives_the_selected_molecule_distro():
     assert review["env"]["MOLECULE_DISTRO"] == (
         "${{ fromJSON(steps.ci.outputs.installer_env || '{}').MOLECULE_DISTRO || '' }}"
     )
+
+
+def test_apt_archives_are_restored_before_system_dependency_setup():
+    workflow = (
+        Path(__file__).resolve().parents[3] / "workflows/reusable-bot-ai-review.yml"
+    )
+    steps = yaml.safe_load(workflow.read_text())["jobs"]["review"]["steps"]
+    by_name = {step.get("name"): step for step in steps}
+    cache = by_name["Restore APT downloads"]
+    assert cache["if"] == "steps.ci.outputs.system_deps == 'true'"
+    assert cache["with"]["mode"] == "restore"
+    assert steps.index(cache) < steps.index(by_name["Install trusted CI dependencies"])

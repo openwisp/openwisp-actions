@@ -31,7 +31,7 @@ def test_configures_cache_outside_apt_cleanup_directory(tmp_path):
     assert result.returncode == 0, result.stderr
     assert (home / ".cache/apt-ci/archives/partial").is_dir()
     config = output.read_text()
-    assert str(home / ".cache/apt-ci/archives") in config
+    assert f'Dir::Cache::archives "{home}/.cache/apt-ci/archives/";' in config
     assert 'Keep-Downloaded-Packages "true"' in config
 
 

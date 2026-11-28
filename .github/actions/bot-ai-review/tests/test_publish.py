@@ -20,12 +20,6 @@ REVIEWS = [
         "state": "CHANGES_REQUESTED",
     },
     {
-        "id": 2,
-        "user": {"type": "Bot", "login": "openwisp-companion[bot]"},
-        "body": "AI review of new provided by `p` / `m`",
-        "state": "COMMENTED",
-    },
-    {
         "id": 0,
         "user": {"type": "Bot", "login": "another[bot]"},
         "body": "AI review of old provided by `p` / `m`",
@@ -55,13 +49,23 @@ case "$*" in
       echo '{"message":"Validation Failed","errors":[{"message":"Diff entry a.py diff is too large"}]}'
       echo 'gh: Validation Failed (HTTP 422)' >&2; exit 1
     fi
+    ID=100
+    if [ -f "$STATE/next-id" ]; then read -r ID <"$STATE/next-id"; fi
+    printf '%s\n' "$((ID + 1))" >"$STATE/next-id"
+    jq --slurpfile request "$STATE/request.json" --argjson id "$ID" --argjson bot "$POST_USER_ID" '
+      . + [{id: $id, user: {id: $bot, login: "openwisp-companion[bot]"},
+        body: $request[0].body, html_url: ("https://example.test/review/" + ($id | tostring)),
+        state: ({COMMENT: "COMMENTED", APPROVE: "APPROVED", REQUEST_CHANGES: "CHANGES_REQUESTED"}
+          [$request[0].event])}]' "$STATE/reviews.json" >"$STATE/updated.json"
+    mv "$STATE/updated.json" "$STATE/reviews.json"
     if [ -f "$STATE/review.json" ]; then
       jq -c . "$STATE/request.json" >>"$STATE/notices.jsonl"
     else
       cp "$STATE/request.json" "$STATE/review.json"
     fi
     if [[ "$*" == *--include* ]]; then
-      printf 'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n%s' "$REVIEW_RESPONSE"
+      if [ "${MISSING_REVIEW_ID:-}" = 1 ]; then ID=null; fi
+      printf 'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n{"id":%s}' "$ID"
     fi
     jq -r '"posted " + .event' "$STATE/request.json" >>"$STATE/log" ;;
 esac
@@ -122,19 +126,7 @@ def publish(
                 }
                 for review in REVIEWS
             ]
-            if findings["event"] == "request-changes":
-                reviews[1]["state"] = "CHANGES_REQUESTED"
             reviews.extend(extra_reviews)
-            if ci_aware:
-                reviews.append(
-                    {
-                        "id": 3,
-                        "user": {"type": "Bot", "id": lookup_user_id},
-                        "body": "AI review <!-- ai-review-run 123-1 -->",
-                        "html_url": "https://example.test/review/3",
-                        "state": "COMMENTED",
-                    }
-                )
             json.dump(reviews, f)
         path = os.path.join(state, "findings.json")
         with open(path, "w") as f:
@@ -160,7 +152,8 @@ def publish(
             "FAIL_POST": str(int(fail_push)),
             "FAIL_LARGE": str(int(fail_large)),
             "FAIL_FOLLOWUP": str(int(fail_followup)),
-            "REVIEW_RESPONSE": "{}" if missing_review_id else '{"id":2}',
+            "MISSING_REVIEW_ID": str(int(missing_review_id)),
+            "POST_USER_ID": str(lookup_user_id),
             "STAGE": stage,
             "MODEL": "provider/model",
             "GITHUB_RUN_ID": "123",
@@ -384,7 +377,7 @@ class TestPublish(unittest.TestCase):
                 _, _, output = publish(
                     APPROVED, comments=comments, ci_aware=True, capture_output=True
                 )
-                self.assertEqual(output, "review_url=https://example.test/review/3\n")
+                self.assertEqual(output, "review_url=https://example.test/review/100\n")
 
     def test_review_link_does_not_match_another_bot(self):
         _, _, output = publish(
@@ -446,7 +439,7 @@ class TestPublish(unittest.TestCase):
         self.assertFalse(
             any(marker in line for line in log if line.startswith("notice "))
         )
-        self.assertEqual(output, "review_url=https://example.test/review/3\n")
+        self.assertEqual(output, "review_url=https://example.test/review/100\n")
 
     def test_split_fallback_posts_approval_after_findings(self):
         comments = (COMMENT, {"file": "b.py", "line": 9, "body": "λ" * 33000})
@@ -479,11 +472,11 @@ class TestPublish(unittest.TestCase):
         marker = "<!-- ai-review-run 123-1 -->"
         self.assertNotIn(marker, review["body"])
         self.assertIn(marker, [line for line in log if line.startswith("notice ")][-1])
-        self.assertEqual(output, "review_url=https://example.test/review/3\n")
+        self.assertEqual(output, "review_url=https://example.test/review/102\n")
 
     def test_continuation_cannot_supersede_the_current_change_request(self):
         continuation = {
-            "id": 3,
+            "id": 101,
             "user": {"login": "openwisp-companion[bot]"},
             "body": "AI review of quoted text",
             "state": "COMMENTED",

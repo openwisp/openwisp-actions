@@ -235,13 +235,18 @@ def validate(data, lines, verdicts):
     }
 
 
-def perimeter(data, decision_pending=False):
+def perimeter(data, verdict="Looks good"):
     decision = data.get("security_perimeter")
     boundary = data.get("boundary")
+    pending = {
+        "Needs changes": "Resolve the blocking findings",
+        "May be wrong direction": "Resolve the direction of the change",
+        "Maintainer decision needed": "Resolve the maintainer decision",
+    }.get(verdict)
     if decision == "NO":
-        if decision_pending:
+        if pending:
             return (
-                "\n\n**Security perimeter: NO.** Resolve the maintainer decision"
+                f"\n\n**Security perimeter: NO.** {pending}"
                 " before requesting the final review."
             )
         return (
@@ -249,6 +254,11 @@ def perimeter(data, decision_pending=False):
             " run `/final-review` next."
         )
     if decision == "YES" and isinstance(boundary, str) and boundary.strip():
+        if pending:
+            return (
+                f"\n\n**Security perimeter: YES** ({boundary.strip()}). {pending}"
+                " before requesting the security review."
+            )
         return (
             f"\n\n**Security perimeter: YES** ({boundary.strip()})."
             " Run `/security-review` next."
@@ -306,7 +316,20 @@ def main():
     data = find_json(text)
     findings = validate(data, lines, VERDICTS[stage]) if data else None
     if findings and stage == "review" and findings["verdict"] != INJECTION:
-        note = perimeter(data, findings["verdict"] == "Maintainer decision needed")
+        # A title or a malformed inline finding alone cannot explain a change request.
+        serious = any(
+            parsed and parsed["severity"] in ("P1", "P2")
+            for parsed in map(parse_finding, data.get("comments", []))
+        )
+        if findings["verdict"] == "Needs changes":
+            explanation = data.get("blocking_issue")
+            has_explanation = isinstance(explanation, str) and explanation.strip()
+            if not serious and not has_explanation:
+                findings = None
+            elif has_explanation:
+                findings["summary"] += "\n\n**Blocking issue:** " + explanation.strip()
+    if findings and stage == "review" and findings["verdict"] != INJECTION:
+        note = perimeter(data, findings["verdict"])
         findings = {**findings, "summary": findings["summary"] + note} if note else None
     findings = findings or dict(FALLBACK)
     print(json.dumps(findings))

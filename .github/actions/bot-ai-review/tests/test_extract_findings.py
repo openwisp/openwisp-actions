@@ -586,7 +586,49 @@ class TestMain(unittest.TestCase):
                 self.assertIn("maintainer decision", result["summary"].lower())
                 self.assertNotIn("`/final-review` next", result["summary"])
                 if decision["security_perimeter"] == "YES":
-                    self.assertIn("`/security-review` next", result["summary"])
+                    self.assertNotIn("`/security-review` next", result["summary"])
+
+    def test_blocking_verdicts_wait_before_next_stage(self):
+        for verdict in ("Needs changes", "May be wrong direction"):
+            for decision in (
+                {"security_perimeter": "NO"},
+                {"security_perimeter": "YES", "boundary": "Device enrollment"},
+            ):
+                with self.subTest(verdict=verdict, decision=decision):
+                    result = self.review(
+                        verdict=verdict,
+                        blocking_issue="The change loses data.",
+                        **decision,
+                    )
+                    self.assertEqual(result["verdict"], verdict)
+                    self.assertNotIn("`/security-review` next", result["summary"])
+                    self.assertNotIn("`/final-review` next", result["summary"])
+                    self.assertIn("before requesting", result["summary"])
+
+    def test_change_request_without_serious_finding_requires_explanation(self):
+        for comments in ([], [comment(severity="P3")], [{"severity": "P2"}]):
+            with self.subTest(comments=comments):
+                result = self.review(
+                    verdict="Needs changes", security_perimeter="NO", comments=comments
+                )
+                self.assertEqual(result["verdict"], "Review not completed")
+        result = self.review(
+            verdict="Needs changes",
+            security_perimeter="NO",
+            comments=[],
+            blocking_issue="Existing databases become inaccessible when the directory changes.",
+        )
+        self.assertIn("Existing databases become inaccessible", result["summary"])
+
+    def test_preserves_blocking_explanation_with_inline_finding(self):
+        result = self.review(
+            verdict="Needs changes",
+            security_perimeter="NO",
+            comments=[comment()],
+            blocking_issue="A separate migration can lose existing data.",
+        )
+        self.assertEqual(len(result["comments"]), 1)
+        self.assertIn("A separate migration can lose existing data", result["summary"])
 
     def test_final_review_cannot_approve_serious_findings(self):
         for severity in ("P1", "P2"):

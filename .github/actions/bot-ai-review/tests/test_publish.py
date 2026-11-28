@@ -20,12 +20,6 @@ REVIEWS = [
         "state": "CHANGES_REQUESTED",
     },
     {
-        "id": 2,
-        "user": {"type": "Bot", "login": "openwisp-companion[bot]"},
-        "body": "AI review of new provided by `p` / `m`",
-        "state": "COMMENTED",
-    },
-    {
         "id": 0,
         "user": {"type": "Bot", "login": "another[bot]"},
         "body": "AI review of old provided by `p` / `m`",
@@ -41,12 +35,43 @@ case "$*" in
   *"issues/comments/9 --jq .user.id"*) echo 42 ;;
   *"/dismissals"*) if [ "${FAIL_DISMISS:-}" = 1 ]; then echo 'dismissal denied' >&2; exit 1; fi ;;
   "api --paginate "*) if [ "${FAIL_LIST:-}" = 1 ]; then exit 1; fi; cat "$STATE/reviews.json" ;;
-  "api -X POST "*) cat >"$STATE/review.json" ;;
+  "api -X POST "*)
+    cat >"$STATE/request.json"
+    if [ "${FAIL_POST:-}" = 1 ]; then echo 'network failure' >&2; exit 1; fi
+    if [ "${FAIL_FOLLOWUP:-}" = 1 ] && [ -f "$STATE/review.json" ]; then
+      echo 'continuation failed' >&2; exit 1
+    fi
+    if jq -e '(.body | length) > 65536' "$STATE/request.json" >/dev/null; then
+      echo 'gh: body is too long (HTTP 422)' >&2; exit 1
+    fi
+    if [ "${FAIL_LARGE:-}" = 1 ] && jq -e '.comments | length > 0' "$STATE/request.json" >/dev/null; then
+      printf 'HTTP/2.0 422 Unprocessable Entity\r\nContent-Type: application/json\r\n\r\n'
+      echo '{"message":"Validation Failed","errors":[{"message":"Diff entry a.py diff is too large"}]}'
+      echo 'gh: Validation Failed (HTTP 422)' >&2; exit 1
+    fi
+    ID=100
+    if [ -f "$STATE/next-id" ]; then read -r ID <"$STATE/next-id"; fi
+    printf '%s\n' "$((ID + 1))" >"$STATE/next-id"
+    jq --slurpfile request "$STATE/request.json" --argjson id "$ID" --argjson bot "$POST_USER_ID" '
+      . + [{id: $id, user: {id: $bot, login: "openwisp-companion[bot]"},
+        body: $request[0].body, html_url: ("https://example.test/review/" + ($id | tostring)),
+        state: ({COMMENT: "COMMENTED", APPROVE: "APPROVED", REQUEST_CHANGES: "CHANGES_REQUESTED"}
+          [$request[0].event])}]' "$STATE/reviews.json" >"$STATE/updated.json"
+    mv "$STATE/updated.json" "$STATE/reviews.json"
+    if [ -f "$STATE/review.json" ]; then
+      jq -c . "$STATE/request.json" >>"$STATE/notices.jsonl"
+    else
+      cp "$STATE/request.json" "$STATE/review.json"
+    fi
+    if [[ "$*" == *--include* ]]; then
+      if [ "${MISSING_REVIEW_ID:-}" = 1 ]; then ID=null; fi
+      printf 'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n{"id":%s}' "$ID"
+    fi
+    jq -r '"posted " + .event' "$STATE/request.json" >>"$STATE/log" ;;
 esac
 """
 FAKE_TOOL = """#!/usr/bin/env bash
 echo "$(basename "$0") $*" >>"$STATE/log"
-if [ "$(basename "$0") $1" = "crit push" ] && [ "${FAIL_PUSH:-}" = 1 ]; then exit 1; fi
 """
 FAILED = {
     "event": "comment",
@@ -82,9 +107,13 @@ def publish(
     lookup_user_id=42,
     fail_dismiss=False,
     fail_list=False,
+    fail_large=False,
+    fail_followup=False,
+    extra_reviews=(),
+    missing_review_id=False,
 ):
     with tempfile.TemporaryDirectory() as state:
-        for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL), ("crit", FAKE_TOOL)):
+        for name, content in (("gh", FAKE_GH), ("git", FAKE_TOOL)):
             path = os.path.join(state, name)
             with open(path, "w") as f:
                 f.write(content)
@@ -97,16 +126,7 @@ def publish(
                 }
                 for review in REVIEWS
             ]
-            if ci_aware:
-                reviews.append(
-                    {
-                        "id": 3,
-                        "user": {"type": "Bot", "id": lookup_user_id},
-                        "body": "AI review <!-- ai-review-run 123-1 -->",
-                        "html_url": "https://example.test/review/3",
-                        "state": "COMMENTED",
-                    }
-                )
+            reviews.extend(extra_reviews)
             json.dump(reviews, f)
         path = os.path.join(state, "findings.json")
         with open(path, "w") as f:
@@ -129,6 +149,11 @@ def publish(
             "FAIL_PUSH": str(int(fail_push)),
             "FAIL_DISMISS": str(int(fail_dismiss)),
             "FAIL_LIST": str(int(fail_list)),
+            "FAIL_POST": str(int(fail_push)),
+            "FAIL_LARGE": str(int(fail_large)),
+            "FAIL_FOLLOWUP": str(int(fail_followup)),
+            "MISSING_REVIEW_ID": str(int(missing_review_id)),
+            "POST_USER_ID": str(lookup_user_id),
             "STAGE": stage,
             "MODEL": "provider/model",
             "GITHUB_RUN_ID": "123",
@@ -155,9 +180,15 @@ def publish(
                 review = json.load(f)
         else:
             review = None
+        notice_path = os.path.join(state, "notices.jsonl")
+        if os.path.exists(notice_path):
+            with open(notice_path) as f:
+                for line in f:
+                    log.append("notice " + json.loads(line)["body"])
         if (
             remote_head != HEAD_SHA
             or fail_push
+            or fail_followup
             or remote_state != "open"
             or remote_base != "master"
         ):
@@ -180,13 +211,13 @@ class TestPublish(unittest.TestCase):
     def test_changed_head_stops_publication_and_dismissal(self):
         status, log = publish(CHANGES, remote_head="b" * 40)
         self.assertNotEqual(status, 0)
-        self.assertFalse(any(line.startswith("crit") for line in log))
+        self.assertFalse(any("api -X POST" in line for line in log))
         self.assertEqual(dismissals(log), [])
 
     def test_failed_publication_does_not_dismiss_reviews(self):
         status, log = publish(CHANGES, fail_push=True)
         self.assertNotEqual(status, 0)
-        self.assertTrue(any(line.startswith("crit push") for line in log))
+        self.assertTrue(any("api -X POST" in line for line in log))
         self.assertEqual(dismissals(log), [])
 
     def test_keeps_change_requests_without_a_conclusion(self):
@@ -202,10 +233,12 @@ class TestPublish(unittest.TestCase):
                 self.assertEqual(len(dismissals(log)), 1)
                 self.assertIn("pulls/1/reviews/1/dismissals", dismissals(log)[0])
 
-    def test_posts_line_comments_with_crit(self):
+    def test_posts_line_comments_with_review(self):
         log, review = publish(CHANGES)
-        self.assertIsNone(review)
-        self.assertTrue(any(line.startswith("crit push 1") for line in log))
+        self.assertEqual(
+            review["comments"],
+            [{"path": "a.py", "line": 1, "side": "RIGHT", "body": "x"}],
+        )
 
     def test_posts_verdict_and_summary_without_line_comments(self):
         cases = [
@@ -216,7 +249,7 @@ class TestPublish(unittest.TestCase):
         for findings, event in cases:
             with self.subTest(verdict=findings["verdict"]):
                 log, review = publish(findings, comments=())
-                self.assertFalse(any(line.startswith("crit") for line in log))
+                self.assertEqual(sum("api -X POST" in line for line in log), 1)
                 self.assertEqual(review["event"], event)
                 self.assertEqual(review["commit_id"], HEAD_SHA)
                 self.assertNotIn("comments", review)
@@ -344,7 +377,7 @@ class TestPublish(unittest.TestCase):
                 _, _, output = publish(
                     APPROVED, comments=comments, ci_aware=True, capture_output=True
                 )
-                self.assertEqual(output, "review_url=https://example.test/review/3\n")
+                self.assertEqual(output, "review_url=https://example.test/review/100\n")
 
     def test_review_link_does_not_match_another_bot(self):
         _, _, output = publish(
@@ -356,16 +389,108 @@ class TestPublish(unittest.TestCase):
         log, review = publish(APPROVED, comments=(), fail_dismiss=True)
         self.assertEqual(review["event"], "APPROVE")
         self.assertEqual(len(dismissals(log)), 1)
+        self.assertTrue(
+            any(line.startswith("notice ") and "review 1" in line for line in log)
+        )
 
     def test_review_listing_failure_does_not_report_publication_failure(self):
         log, review = publish(APPROVED, comments=(), fail_list=True)
         self.assertEqual(review["event"], "APPROVE")
         self.assertEqual(dismissals(log), [])
+        self.assertTrue(
+            any(line.startswith("notice ") and "earlier" in line for line in log)
+        )
 
     def test_publication_uses_prefetched_commit(self):
         log, _ = publish(APPROVED, comments=())
         self.assertTrue(any(line.startswith("git checkout ") for line in log))
         self.assertFalse(any(line.startswith("git fetch ") for line in log))
+
+    def test_large_diff_rejection_preserves_every_finding_in_review(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "details"})
+        log, review = publish(CHANGES, comments=comments, fail_large=True)
+        self.assertNotIn("comments", review)
+        self.assertEqual(review["event"], "REQUEST_CHANGES")
+        self.assertIn("a.py:1", review["body"])
+        self.assertIn("b.py:9", review["body"])
+        self.assertIn("details", review["body"])
+        self.assertEqual(len(dismissals(log)), 1)
+
+    def test_large_diff_fallback_splits_long_findings(self):
+        comments = (
+            {"file": "a.py", "line": 1, "body": "λ" * 33000},
+            {"file": "b.py", "line": 9, "body": "Ω" * 33000},
+        )
+        log, review = publish(CHANGES, comments=comments, fail_large=True)
+        notices = "".join(line[7:] for line in log if line.startswith("notice "))
+        combined = review["body"] + notices
+        self.assertIn("a.py:1", combined)
+        self.assertIn("b.py:9", combined)
+        self.assertEqual(combined.count("λ"), 33000)
+        self.assertEqual(combined.count("Ω"), 33000)
+
+    def test_split_fallback_keeps_ci_marker_in_first_review(self):
+        findings = {**CHANGES, "summary": "λ" * 33000}
+        log, review, output = publish(
+            findings, fail_large=True, ci_aware=True, capture_output=True
+        )
+        marker = "<!-- ai-review-run 123-1 -->"
+        self.assertIn(marker, review["body"])
+        self.assertFalse(
+            any(marker in line for line in log if line.startswith("notice "))
+        )
+        self.assertEqual(output, "review_url=https://example.test/review/100\n")
+
+    def test_split_fallback_posts_approval_after_findings(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "λ" * 33000})
+        log, review = publish(APPROVED, comments=comments, fail_large=True)
+        self.assertEqual(review["event"], "COMMENT")
+        posts = [line for line in log if "api -X POST" in line]
+        self.assertGreaterEqual(len(posts), 4)
+        self.assertEqual(
+            [line for line in log if line.startswith("posted ")][-1], "posted APPROVE"
+        )
+
+    def test_failed_continuation_does_not_approve(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "λ" * 33000})
+        status, log = publish(
+            APPROVED, comments=comments, fail_large=True, fail_followup=True
+        )
+        self.assertNotEqual(status, 0)
+        self.assertNotIn("posted APPROVE", log)
+        self.assertEqual(dismissals(log), [])
+
+    def test_split_approval_marks_the_final_review(self):
+        comments = (COMMENT, {"file": "b.py", "line": 9, "body": "λ" * 33000})
+        log, review, output = publish(
+            APPROVED,
+            comments=comments,
+            fail_large=True,
+            ci_aware=True,
+            capture_output=True,
+        )
+        marker = "<!-- ai-review-run 123-1 -->"
+        self.assertNotIn(marker, review["body"])
+        self.assertIn(marker, [line for line in log if line.startswith("notice ")][-1])
+        self.assertEqual(output, "review_url=https://example.test/review/102\n")
+
+    def test_continuation_cannot_supersede_the_current_change_request(self):
+        continuation = {
+            "id": 101,
+            "user": {"login": "openwisp-companion[bot]"},
+            "body": "AI review of quoted text",
+            "state": "COMMENTED",
+        }
+        log, _ = publish(CHANGES, extra_reviews=(continuation,))
+        self.assertEqual(len(dismissals(log)), 1)
+        self.assertIn("pulls/1/reviews/1/dismissals", dismissals(log)[0])
+
+    def test_missing_review_id_keeps_earlier_change_requests(self):
+        log, _ = publish(CHANGES, missing_review_id=True)
+        self.assertEqual(dismissals(log), [])
+        self.assertTrue(
+            any(line.startswith("notice ") and "earlier" in line for line in log)
+        )
 
 
 if __name__ == "__main__":

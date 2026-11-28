@@ -38,13 +38,14 @@ def test_configures_cache_outside_apt_cleanup_directory(tmp_path):
 def test_only_ci_can_save_cached_archives():
     action = yaml.safe_load((SCRIPT.parent / "action.yml").read_text())
     steps = {step["name"]: step for step in action["runs"]["steps"]}
-    write = steps["Restore or save APT archives"]
-    restore = steps["Restore APT archives for review"]
-    assert write["if"] == "inputs.mode == 'write'"
-    assert restore["if"] == "inputs.mode == 'restore'"
+    save = steps["Save APT archives from CI"]
+    restore = steps["Restore APT archives"]
+    assert save["if"] == "inputs.mode == 'save'"
+    assert restore["if"] == "inputs.mode != 'save'"
+    assert save["uses"].startswith("actions/cache/save@")
     assert restore["uses"].startswith("actions/cache/restore@")
-    assert write["with"]["path"] == restore["with"]["path"]
-    assert write["with"]["key"] == restore["with"]["key"]
+    assert save["with"]["path"] == restore["with"]["path"]
+    assert save["with"]["key"] == restore["with"]["key"]
 
 
 def test_rejects_paths_that_cannot_be_written_to_apt_configuration(tmp_path):

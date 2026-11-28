@@ -2,7 +2,7 @@ name: Cache APT downloads
 description: Reuse APT archives between trusted CI and review runs.
 inputs:
   mode:
-    description: Use write in CI and restore in review.
+    description: Use write before CI installation, save afterward, and restore in review.
     required: true
   image-os:
     description: GitHub runner image identifier.
@@ -16,26 +16,43 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Configure APT archive directory
+    - name: Validate cache mode
       shell: bash
       env:
         MODE: ${{ inputs.mode }}
-      run: |
-        case "$MODE" in write|restore) ;; *) echo "Invalid cache mode" >&2; exit 1 ;; esac
-        bash "$GITHUB_ACTION_PATH/setup.sh"
-    - name: Restore or save APT archives
-      if: inputs.mode == 'write'
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      run: case "$MODE" in write|restore|save) ;; *) echo "Invalid cache mode" >&2; exit 1 ;; esac
+    - name: Configure APT archive directory
+      if: inputs.mode != 'save'
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/setup.sh"
+    - name: Restore APT archives
+      if: inputs.mode != 'save'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/apt-ci/archives/*.deb
+        path: ~/.cache/apt-ci/staging/*.deb
         key: >-
           ${{ format('apt-{0}-{1}-{2}-{3}-{4}-{5}', runner.os, runner.arch, inputs.image-os,
               inputs.image-version, inputs.variant, hashFiles('install-ci-deps.sh', 'install-dev.sh')) }}
-    - name: Restore APT archives for review
-      if: inputs.mode == 'restore'
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - name: Verify restored APT archives
+      if: inputs.mode != 'save'
+      shell: bash
+      run: |
+        if compgen -G "$HOME/.cache/apt-ci/staging/*.deb" >/dev/null; then
+          sudo apt-get update
+          python3 "$GITHUB_ACTION_PATH/verify.py" "$HOME/.cache/apt-ci/staging" "$HOME/.cache/apt-ci/archives"
+        fi
+    - name: Stage APT downloads from CI
+      if: inputs.mode == 'save'
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.cache/apt-ci/staging"
+        find "$HOME/.cache/apt-ci/archives" -maxdepth 1 -type f -name '*.deb' \
+          -exec cp -n -- {} "$HOME/.cache/apt-ci/staging/" \;
+    - name: Save APT archives from CI
+      if: inputs.mode == 'save'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/apt-ci/archives/*.deb
+        path: ~/.cache/apt-ci/staging/*.deb
         key: >-
           ${{ format('apt-{0}-{1}-{2}-{3}-{4}-{5}', runner.os, runner.arch, inputs.image-os,
               inputs.image-version, inputs.variant, hashFiles('install-ci-deps.sh', 'install-dev.sh')) }}

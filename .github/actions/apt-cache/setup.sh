@@ -4,7 +4,7 @@ set -euo pipefail
 
 cache="$HOME/.cache/apt-ci/archives"
 staging="$HOME/.cache/apt-ci/staging"
-if [[ ! "$cache" =~ ^/[A-Za-z0-9_./-]+$ ]]; then
+if [[ ! "$cache" =~ ^/[A-Za-z0-9_./-]+$ || "$cache" == *..* ]]; then
   echo "Invalid APT cache path" >&2
   exit 1
 fi

@@ -49,11 +49,12 @@ def test_only_ci_can_save_cached_archives():
 
 
 def test_rejects_paths_that_cannot_be_written_to_apt_configuration(tmp_path):
-    result = subprocess.run(
-        ["bash", str(SCRIPT)],
-        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / 'bad"path')},
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode != 0
-    assert "Invalid APT cache path" in result.stderr
+    for home in (tmp_path / 'bad"path', tmp_path / ".." / "other"):
+        result = subprocess.run(
+            ["bash", str(SCRIPT)],
+            env={"PATH": "/usr/bin:/bin", "HOME": str(home)},
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert "Invalid APT cache path" in result.stderr

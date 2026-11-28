@@ -31,11 +31,12 @@ def prepare_repo(tmp_path, services):
     subprocess.run([*git, "add", "."], check=True)
     subprocess.run([*git, "commit", "-qm", "Trusted"], check=True)
     sha = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
-    # The selected commit, not the working tree, controls privileged setup.
+    # The default commit, not the target branch, controls privileged setup.
     workflow.write_text(
         'jobs:\n  test:\n    env:\n      AI_REVIEW_SERVICES: "unexpected"\n'
     )
     (repo / "docker-compose.yml").write_text("untrusted working tree\n")
+    subprocess.run([*git, "commit", "-qam", "Target"], check=True)
     bins = tmp_path / "bin"
     bins.mkdir()
     docker = bins / "docker"

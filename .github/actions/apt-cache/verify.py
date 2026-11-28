@@ -7,6 +7,7 @@ before a cached package can run its installation scripts as root.
 import hashlib
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -16,9 +17,10 @@ from pathlib import Path
 from urllib.parse import unquote
 
 
-def package_metadata(package):
+def package_metadata(package, version, architecture):
+    identity = package if architecture == "all" else f"{package}:{architecture}"
     result = subprocess.run(
-        ["/usr/bin/apt-cache", "show", "--no-all-versions", package],
+        ["/usr/bin/apt-cache", "show", "--no-all-versions", f"{identity}={version}"],
         capture_output=True,
         text=True,
         env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
@@ -33,14 +35,22 @@ def admit_archive(path, active):
     parts = path.name.split("_")
     if len(parts) != 3 or not re.fullmatch(r"[a-z0-9][a-z0-9+.-]*", parts[0]):
         return False
-    metadata = package_metadata(parts[0])
+    package = parts[0]
+    version = unquote(parts[1])
+    architecture = parts[2].removesuffix(".deb")
+    if not re.fullmatch(r"[0-9][A-Za-z0-9.+:~\-]*", version) or not re.fullmatch(
+        r"[a-z0-9][a-z0-9-]*", architecture
+    ):
+        return False
+    metadata = package_metadata(package, version, architecture)
     for record in metadata.split("\n\n"):
         fields = Parser().parsestr(record)
-        filename = fields.get("Filename", "").rsplit("/", 1)[-1]
         digest = fields.get("SHA256", "")
         size = fields.get("Size", "")
         if (
-            unquote(filename) != unquote(path.name)
+            fields.get("Package") != package
+            or fields.get("Version") != version
+            or fields.get("Architecture") != architecture
             or not re.fullmatch(r"[0-9a-f]{64}", digest)
             or not size.isdecimal()
         ):
@@ -73,7 +83,10 @@ def admit_archive(path, active):
 def verify_archives(staging, active):
     for path in staging.glob("*.deb"):
         if not admit_archive(path, active):
-            os.unlink(path)
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                os.unlink(path)
 
 
 if __name__ == "__main__":
